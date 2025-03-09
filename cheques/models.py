@@ -151,11 +151,26 @@ class InvoiceChequeMap(models.Model):
 
     def __str__(self):
         return str(self.creditinvoice + " : "+ self.cheque_store)
+
+class ClaimCategory(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+    category_name = models.TextField( blank=False, null=False) #name should be branch wise unique
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
+    version = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'Claim_Catatory'
+        verbose_name = 'Claim Catatory'
+        verbose_name_plural = 'Claim Catatories'
     
 class MasterClaim(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     claim_name = models.TextField( blank=False, null=False) #name should be branch wise unique
+    #claim_category = models.ForeignKey(ClaimCategory, on_delete=models.PROTECT, blank=False, null=False)
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
@@ -184,5 +199,6 @@ class CustomerClaim(models.Model):
         verbose_name_plural = 'Customer Claims'
 
     def __str__(self):
-        return str(self.creditinvoice.invoice_no + " : " + self.claim.claim_name + " : "+ self.claim_amount)
+        return str(self.creditinvoice.invoice_no + " : " + self.claim.claim_name + " : " + str(self.claim_amount))
 
+        # return str(self.creditinvoice.invoice_no + " : " + self.claim.claim_name + " : "+ self.claim_amount)

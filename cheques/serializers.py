@@ -1,7 +1,7 @@
 from django.db import models, transaction
 from rest_framework import serializers
 from .models import (Company, Branch, ChequeStore, InvoiceChequeMap, 
-                     Customer, CreditInvoice, MasterClaim, CustomerClaim)
+                     Customer, CreditInvoice, ClaimCategory, MasterClaim, CustomerClaim)
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.utils import timezone
 from decimal import Decimal
@@ -119,16 +119,20 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
     
     def _handle_claims(self, instance, claims_data):
         with transaction.atomic():
-            existing_claims = instance.customerclaim_set.all()
-            existing_claims_map = {str(c.claim.alias_id): c for c in existing_claims}
-            
+            #This line retrieves all related CustomerClaim objects associated with the instance
+            existing_claims = instance.customerclaim_set.all() 
+            existing_claims_map = {str(c.alias_id): c for c in existing_claims}
+            for claim in existing_claims:
+                print(f"existing_claims Alias ID: {claim.alias_id}, Claim Amount: {claim.claim_amount}, Version: {claim.version}")
             # Process claims
             seen_claims = set()
             for claim in claims_data:
-                claim_obj = get_object_or_404(MasterClaim, alias_id=claim['alias_id'])
+                if not claim['existing']:
+                    claim_obj = get_object_or_404(MasterClaim, alias_id=claim['alias_id'])
                 
                 # Update existing or create new
                 if claim.get('existing'):
+                    print("existing_claims_map.get(claim['alias_id'])", existing_claims_map.get(claim['alias_id']), " claim['alias_id'] ", claim['alias_id'])
                     customer_claim = existing_claims_map.get(claim['alias_id'])
                     if customer_claim:
                         customer_claim.claim_amount = claim['claim_amount']
@@ -205,7 +209,16 @@ class ChequeStoreSerializer(serializers.ModelSerializer):
             #raise serializers.ValidationError("Receiving date cannot be in the future")
         return data
     
-
+class ClaimCategorySerializer(serializers.ModelSerializer):
+    branch = serializers.SlugRelatedField(
+        slug_field='alias_id',
+        queryset=Branch.objects.all(),
+        required=True
+    ) 
+    class Meta:
+        model= ClaimCategory
+        fields = ['alias_id', 'branch', 'category_name', 'is_active',  'version'] #'updated_at', 'updated_by',
+        read_only_fields = ['alias_id',  'version']      #'updated_at', 'updated_by',
 
 class MasterClaimSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(
@@ -227,3 +240,5 @@ class CustomerClaimSerializer(serializers.ModelSerializer):
         model = CustomerClaim
         fields = ['alias_id', 'branch', 'creditinvoice', 'claim', 'claim_name', 'claim_amount', 'updated_at', 'updated_by', 'version']
         read_only_fields = ['alias_id', 'updated_at', 'updated_by', 'version']
+
+    

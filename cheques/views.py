@@ -44,7 +44,7 @@ from openpyxl import Workbook
 from .models import (
     Company, Branch, Customer, CreditInvoice,
     ChequeStore, InvoiceChequeMap, MasterClaim,
-    CustomerClaim
+    CustomerClaim, ClaimCategory
 )
 
 @api_view(['GET'])
@@ -296,8 +296,45 @@ class InvoiceChequeMapViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
     
 
+class ClaimCategoryViewSet(viewsets.ModelViewSet):
+    queryset = ClaimCategory.objects.all()
+    serializer_class = serializers.ClaimCategorySerializer
+    permission_classes = [IsAuthenticated]  # Add this line
+    lookup_field = 'alias_id'  
 
+    def get_queryset(self):
+        branch = self.request.query_params.get('branch', None)
+        if branch:
+            return ClaimCategory.objects.filter(branch__alias_id=branch)
+        return self.queryset #ClaimCategory.objects.all()
 
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, headers=headers)
+
+    
+    def perform_create(self, serializer):
+        # Add user tracking
+        serializer.save(updated_by=self.request.user)
+    
+    def perform_update(self, serializer):
+        # Add user tracking
+        serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
+    
 class MasterClaimViewSet(viewsets.ModelViewSet):
     queryset = MasterClaim.objects.all()
     serializer_class = serializers.MasterClaimSerializer
@@ -330,7 +367,11 @@ class MasterClaimViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Add user tracking
         serializer.save(updated_by=self.request.user)
-        
+
+    def perform_update(self, serializer):
+        # Add user tracking
+        serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
+
     # @transaction.atomic
     # def destroy(self, request, *args, **kwargs):
     #     instance = self.get_object()
