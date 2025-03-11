@@ -167,10 +167,15 @@ class ClaimCategory(models.Model):
         verbose_name_plural = 'Claim Catatories'
     
 class MasterClaim(models.Model):
+    class CategoryChoices(models.TextChoices):
+        RETURN = 'SRTN', 'Sales Return'
+        OTHER = 'OTH', 'Other Claims'
+
+    
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     claim_name = models.TextField( blank=False, null=False) #name should be branch wise unique
-    #claim_category = models.ForeignKey(ClaimCategory, on_delete=models.PROTECT, blank=False, null=False)
+    category = models.CharField(max_length=4, choices=CategoryChoices.choices, default=CategoryChoices.OTHER)
     is_active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
@@ -189,6 +194,7 @@ class CustomerClaim(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     creditinvoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT,  blank=False, null=False)  
     claim = models.ForeignKey(MasterClaim,on_delete=models.PROTECT, blank=False, null=False)
+    claim_date = models.DateField( null=True)
     claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)

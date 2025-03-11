@@ -168,8 +168,6 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        # mutable_data = request.data.copy()
-        # mutable_data['version'] = int(request.data['version']) + 1
 
         instance = self.get_object()
         if int(request.data.get('version')) != instance.version:
@@ -178,7 +176,7 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop('partial', False)
         serializer = self.get_serializer(
             instance, 
-            data=request.data,  # Use the modified copy
+            data=request.data,  
             partial=partial
         )
         serializer.is_valid(raise_exception=True)
@@ -334,18 +332,21 @@ class ClaimCategoryViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         # Add user tracking
         serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
-    
+
 class MasterClaimViewSet(viewsets.ModelViewSet):
-    queryset = MasterClaim.objects.all()
+    queryset = MasterClaim.objects.select_related('branch')
     serializer_class = serializers.MasterClaimSerializer
-    permission_classes = [IsAuthenticated]  # Add this line
-    lookup_field = 'alias_id'  
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'alias_id'
 
     def get_queryset(self):
+        queryset = super().get_queryset()
         branch = self.request.query_params.get('branch', None)
+        
         if branch:
-            return MasterClaim.objects.filter(branch__alias_id=branch)
-        return self.queryset #MasterClaim.objects.all()
+            queryset = queryset.filter(branch__alias_id=branch)
+        
+        return queryset.order_by('category', 'claim_name')
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -363,20 +364,56 @@ class MasterClaimViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
-    
+
     def perform_create(self, serializer):
-        # Add user tracking
-        serializer.save(updated_by=self.request.user)
+        serializer.save(
+            updated_by=self.request.user,
+            version=1  # Initialize version for new entries
+        )
 
     def perform_update(self, serializer):
-        # Add user tracking
-        serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
+        serializer.save(
+            updated_by=self.request.user,
+            version=serializer.instance.version + 1
+        )
+# class MasterClaimViewSet(viewsets.ModelViewSet):
+#     queryset = MasterClaim.objects.all()
+#     serializer_class = serializers.MasterClaimSerializer
+#     permission_classes = [IsAuthenticated]  # Add this line
+#     lookup_field = 'alias_id'  
 
-    # @transaction.atomic
-    # def destroy(self, request, *args, **kwargs):
-    #     instance = self.get_object()
-    #     self.perform_destroy(instance)
-    #     return Response(status=status.HTTP_204_NO_CONTENT)
+#     def get_queryset(self):
+#         branch = self.request.query_params.get('branch', None)
+#         if branch:
+#             return MasterClaim.objects.filter(branch__alias_id=branch)
+#         return self.queryset #MasterClaim.objects.all()
+
+#     @transaction.atomic
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_create(serializer)
+#         headers = self.get_success_headers(serializer.data)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+#     @transaction.atomic
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_update(serializer)
+#         return Response(serializer.data)
+    
+#     def perform_create(self, serializer):
+#         # Add user tracking
+#         serializer.save(updated_by=self.request.user)
+
+#     def perform_update(self, serializer):
+#         # Add user tracking
+#         serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
+
+   
 
 class CustomerClaimViewSet(viewsets.ModelViewSet):
     queryset = CustomerClaim.objects.all()
@@ -596,167 +633,3 @@ class CIvsChequeReportView(ViewSet):
 
         return response
 
-# ------------ Cheque Report ------------
-
-# class CIvsChequeReportView(ViewSet):
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         # Reuse the list method's logic to generate report data
-#         return self.list(self.request).data  # Returns the report data list
-
-#     def list(self, request):
-#         branch_id = request.query_params.get('branch')
-#         date_from = request.query_params.get('date_from')
-#         date_to = request.query_params.get('date_to')
-#         min_amount = request.query_params.get('min_amount')
-#         max_amount = request.query_params.get('max_amount')
-
-
-
-        
-
-
-#         # Base query
-#         invoices = CreditInvoice.objects.select_related(
-#             'branch', 'customer'
-#         ).prefetch_related('customerclaim_set')
-
-#         # Apply filters
-#         if branch_id:
-#             invoices = invoices.filter(branch__alias_id=branch_id)
-#         if date_from and date_to:
-#             invoices = invoices.filter(transaction_date__range=[date_from, date_to])
-#         if min_amount:
-#             invoices = invoices.filter(due_amount__gte=min_amount)
-#         if max_amount:
-#             invoices = invoices.filter(due_amount__lte=max_amount)
-
-#         report_data = []
-#         for invoice in invoices:
-#             # Calculate claims
-#             claims_total = invoice.customerclaim_set.aggregate(
-#                 total=Sum('claim_amount')
-#             )['total'] or Decimal('0.0000')
-
-#             # Get cheque data
-
-#             cheque_data = ChequeStore.objects.filter(
-#                 Q(cheque_status=ChequeStore.ChequeStatus.RECEIVED) |
-#                 Q(cheque_status=ChequeStore.ChequeStatus.DEPOSITED) |
-#                 Q(cheque_status=ChequeStore.ChequeStatus.HONORED),
-#                 invoice_cheques__creditinvoice=invoice
-#             ).aggregate(
-#                 total_received=Sum('cheque_amount'),
-#                 total_cleared=Sum(
-#                     Case(
-#                         When(cheque_status=ChequeStore.ChequeStatus.HONORED, 
-#                             then='cheque_amount'),
-#                         default=0,
-#                         output_field=DecimalField()
-#                     )
-#                 )
-#             )
-
-#             report_data.append({
-#                 'branch': invoice.branch.name,
-#                 'invoice_no': invoice.invoice_no,
-#                 'transaction_date': invoice.transaction_date,
-#                 'payment_grace_days': invoice.payment_grace_days,
-#                 'due_amount': invoice.due_amount,
-#                 'claims': claims_total,
-#                 'net_sales': invoice.due_amount - claims_total,
-#                 'received_cheques': cheque_data['total_received'] or 0,
-#                 'cleared_cheques': cheque_data['total_cleared'] or 0,
-#                 'total_due': (invoice.due_amount - claims_total - 
-#                              (cheque_data['total_received'] or 0) -
-#                              (cheque_data['total_cleared'] or 0))
-#             })
-
-#         return Response(report_data)
-    
-
-#     @action(detail=False, methods=['get'])
-#     def export_pdf(self, request):
-#         # PDF generation logic using ReportLab
-#         response = HttpResponse(content_type='application/pdf')
-#         buffer = io.BytesIO()
-
-#         p = canvas.Canvas(buffer, pagesize=letter)
-#         width, height = letter
-
-#         # Header
-#         p.setFont("Helvetica-Bold", 16)
-#         p.drawString(50, height-50, f"CI vs Cheque Report - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        
-#         # Data table
-#         data = [['Invoice', 'Date', 'Due Amount', 'Claims', 'Net Sales', 'Total Due']]
-
-#          # Get report data
-#         report_data = self.list(request).data
-
-#         # Add data to PDF table
-#         for item in report_data:
-#             data.append([
-#                 item['invoice_no'],
-#                 item['transaction_date'].strftime('%Y-%m-%d'),  # Ensure datetime object
-#                 str(item['due_amount']),
-#                 str(item['claims']),
-#                 str(item['net_sales']),
-#                 str(item['total_due'])
-#             ])
-
-#         table = Table(data)
-#         table.setStyle(TableStyle([
-#             ('BACKGROUND', (0,0), (-1,0), colors.grey),
-#             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-#             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-#             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-#             ('FONTSIZE', (0,0), (-1,0), 12),
-#             ('BOTTOMPADDING', (0,0), (-1,0), 12),
-#             ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-#             ('GRID', (0,0), (-1,-1), 1, colors.black)
-#         ]))
-
-#         table.wrapOn(p, width-100, height)
-#         table.drawOn(p, 50, height-150)
-
-#         p.showPage()
-#         p.save()
-
-#         pdf = buffer.getvalue()
-#         buffer.close()
-#         response.write(pdf)
-#         return response
-    
-
-#     @action(detail=False, methods=['get'])
-#     def export_excel(self, request):
-#         response = HttpResponse(
-#             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-#         )
-#         response['Content-Disposition'] = 'attachment; filename=ci_vs_cheque.xlsx'
-
-#         wb = Workbook()
-#         ws = wb.active
-#         ws.title = "Report"
-
-#         # Add headers
-#         headers = ['Invoice No', 'Transaction Date', 'Due Amount', 'Claims', 'Net Sales', 'Total Due']
-#         ws.append(headers)
-
-#         report_data = self.list(request).data  # List of dictionaries
-
-#         # Add data
-#         for item in report_data:
-#             ws.append([
-#                 item['invoice_no'],          # Access via key
-#                 item['transaction_date'].strftime('%d-%m-%Y'),
-#                 item['due_amount'],
-#                 item['claims'],
-#                 item['net_sales'],
-#                 item['total_due']
-#             ])
-
-#         wb.save(response)
-#         return response
