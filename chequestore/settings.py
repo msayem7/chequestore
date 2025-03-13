@@ -98,7 +98,8 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",  # Your Vue.js development server URL
-    "https://uuuuuu.pythonanywhere.com"
+    "https://uuuuuu.pythonanywhere.com",
+    "https://ezcheque.netlify.app"
 ]
 ROOT_URLCONF = 'chequestore.urls'
 
