@@ -18,14 +18,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
 from cheques import serializers
-
-# from .serializers import (
-#     CustomTokenObtainPairSerializer, CompanySerializer,
-#     BranchSerializer, CreditInvoiceSerializer,
-#     CustomerSerializer, ChequeStoreSerializer,
-#     InvoiceChequeMapSerializer, MasterClaimSerializer,
-#     CustomerClaimSerializer, UserSerializer
-# )
+from django.conf import settings
 
 from rest_framework.decorators import api_view, permission_classes, action
 
@@ -376,44 +369,6 @@ class MasterClaimViewSet(viewsets.ModelViewSet):
             updated_by=self.request.user,
             version=serializer.instance.version + 1
         )
-# class MasterClaimViewSet(viewsets.ModelViewSet):
-#     queryset = MasterClaim.objects.all()
-#     serializer_class = serializers.MasterClaimSerializer
-#     permission_classes = [IsAuthenticated]  # Add this line
-#     lookup_field = 'alias_id'  
-
-#     def get_queryset(self):
-#         branch = self.request.query_params.get('branch', None)
-#         if branch:
-#             return MasterClaim.objects.filter(branch__alias_id=branch)
-#         return self.queryset #MasterClaim.objects.all()
-
-#     @transaction.atomic
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_create(serializer)
-#         headers = self.get_success_headers(serializer.data)
-#         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-#     @transaction.atomic
-#     def update(self, request, *args, **kwargs):
-#         partial = kwargs.pop('partial', False)
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_update(serializer)
-#         return Response(serializer.data)
-    
-#     def perform_create(self, serializer):
-#         # Add user tracking
-#         serializer.save(updated_by=self.request.user)
-
-#     def perform_update(self, serializer):
-#         # Add user tracking
-#         serializer.save(updated_by=self.request.user, version=serializer.instance.version + 1)
-
-   
 
 class CustomerClaimViewSet(viewsets.ModelViewSet):
     queryset = CustomerClaim.objects.all()
@@ -435,9 +390,6 @@ class CustomerClaimViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    # @transaction.atomic
-    # def update(self, request, *args, **kwargs):
-    #     return super().update(request, *args, **kwargs)
     
     @transaction.atomic
     def update(self, request, *args, **kwargs):
@@ -448,31 +400,50 @@ class CustomerClaimViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-
 class CIvsChequeReportView(ViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        
+
         queryset = CreditInvoice.objects.annotate(
-            total_claim=Sum('customerclaim__claim_amount'),
+            total_claim=Sum(
+                Case(
+                    When(
+                        Q(customerclaim__claim__category='OTH'),
+                        then='customerclaim__claim_amount'
+                    ),
+                    default=0,
+                    output_field=DecimalField(max_digits=18, decimal_places=4)
+                )
+            ),
+            sales_return=Sum(
+                Case(
+                    When(
+                        Q(customerclaim__claim__category='SRTN'),
+                        then='customerclaim__claim_amount'
+                    ),
+                    default=0,
+                    output_field=DecimalField(max_digits=18, decimal_places=4)
+                )
+            ),
             received=Sum(
                 Case(
                     When(
-                        Q(invoicechequemap__cheque_store__cheque_status=ChequeStore.ChequeStatus.RECEIVED) |
-                        Q(invoicechequemap__cheque_store__cheque_status=ChequeStore.ChequeStatus.DEPOSITED),
-                        then=F('invoicechequemap__adjusted_amount')
+                        Q(invoicechequemap__cheque_store__cheque_status__in=[ChequeStore.ChequeStatus.RECEIVED, ChequeStore.ChequeStatus.DEPOSITED]),
+                        then='invoicechequemap__adjusted_amount'
                     ),
-                    default=Decimal(0),
+                    default=0,
                     output_field=DecimalField(max_digits=18, decimal_places=4)
                 )
             ),
             cleared=Sum(
                 Case(
                     When(
-                        invoicechequemap__cheque_store__cheque_status=ChequeStore.ChequeStatus.HONORED,
-                        then=F('invoicechequemap__adjusted_amount')
+                        Q(invoicechequemap__cheque_store__cheque_status=ChequeStore.ChequeStatus.HONORED),
+                        then='invoicechequemap__adjusted_amount'
                     ),
-                    default=Decimal(0),
+                    default=0,
                     output_field=DecimalField(max_digits=18, decimal_places=4)
                 )
             )
@@ -495,72 +466,135 @@ class CIvsChequeReportView(ViewSet):
 
     def list(self, request):
         queryset = self.get_queryset().annotate(
-            net_sales=F('due_amount') - F('total_claim'),
-            total_due=F('net_sales') - (F('received') + F('cleared'))
+            net_sales=F('due_amount') - F('sales_return'),
+            total_due=F('net_sales') - F('received') - F('cleared') - F('total_claim')
+            # net_sales=F('due_amount') - F('total_claim'),
+            # total_due=F('net_sales') - (F('received') + F('cleared'))
         ).values(
             'branch__name',
             'invoice_no',
             'transaction_date',
             'payment_grace_days',
             'due_amount',
-            'total_claim',
+            'sales_return',
             'net_sales',
             'received',
             'cleared',
+            'total_claim',
             'total_due'
-        )
-
+        ).order_by('branch__name', 'transaction_date')
         return Response(queryset)
 
     @action(detail=False, methods=['get'])
     def export_excel(self, request):
+        from openpyxl.worksheet.table import Table, TableStyleInfo
+        from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+
         queryset = self.get_queryset().annotate(
-            net_sales=F('due_amount') - F('total_claim'),
-            total_due=F('net_sales') - (F('received') + F('cleared'))
-        ).values_list(
-            'branch__name',
-            'invoice_no',
-            'transaction_date',
-            'payment_grace_days',
-            'due_amount',
-            'total_claim',
-            'net_sales',
-            'received',
-            'cleared',
-            'total_due'
-        )
+            net_sales=F('due_amount') - F('sales_return'),
+            total_due=F('net_sales') - F('received') - F('cleared') - F('total_claim')
+        ).values(
+            'branch__name', 'invoice_no', 'transaction_date', 'payment_grace_days',
+            'due_amount', 'sales_return', 'net_sales', 'received', 'cleared',
+            'total_claim', 'total_due'
+        ).order_by('branch__name', 'transaction_date')
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="ci_report_{datetime.now().strftime("%Y%m%d%H%M")}.xlsx"'
 
         wb = Workbook()
         ws = wb.active
-        ws.title = "CI vs Cheque Report"
+        ws.title = "CI Cheque Summary" 
 
-        # Add headers
+        # Custom Styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+        alignment = Alignment(horizontal="center", vertical="center")
+        thin_border = Border(left=Side(style='thin'), 
+                            right=Side(style='thin'), 
+                            top=Side(style='thin'), 
+                            bottom=Side(style='thin'))
+        
+        # Column headers
         headers = [
-            'Branch Name', 'Invoice No', 'Transaction Date', 'Grace',
-            'Due Amount', 'Total Claims', 'Net Sales', 'Received Cheques',
-            'Cleared Cheques',  'Total Due'
+            'Branch Name', 'Invoice No', 'Sales Date', 'Grace',
+            'Sale Amount', 'Sales Return', 'Net Sales', 'Received',
+            'Cleared', 'Claims', 'Total Due'
         ]
         ws.append(headers)
 
-        # Add data
-        for item in queryset:
-            ws.append([
-                item[0],  # branch__name
-                item[1],  # invoice_no
-                item[2].strftime('%Y-%m-%d'),  # transaction_date
-                float(item[3] or 0),  # due_amount
-                float(item[4] or 0),  # total_claim
-                float(item[7] or 0),  # net_sales
-                float(item[5] or 0),  # Received
-                float(item[6] or 0),  # Cleared
-                float(item[8] or 0)   # total_due
-            ])
+        # Apply header styling
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = alignment
+            cell.border = thin_border
+
+        # Add data rows
+        for row_idx, item in enumerate(queryset, start=2):
+            row = [
+                item['branch__name'],
+                item['invoice_no'],
+                item['transaction_date'].strftime(settings.DATE_FORMAT),
+                item['payment_grace_days'],
+                float(item['due_amount'] or 0),
+                float(item['sales_return'] or 0),
+                float(item['net_sales'] or 0),
+                float(item['received'] or 0),
+                float(item['cleared'] or 0),
+                float(item['total_claim'] or 0),
+                float(item['total_due'] or 0)
+            ]
+            ws.append(row)
+
+            # Apply alternating row colors
+            fill_color = "D3D3D3" if row_idx % 2 == 0 else "FFFFFF"
+            for col in range(1, len(headers) + 1):
+                cell = ws.cell(row=row_idx, column=col)
+                cell.fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+                cell.border = thin_border
+                cell.alignment = alignment
+
+        # Set column widths and number formatting
+        columns = [
+            ('Branch Name', 20),
+            ('Invoice No', 15),
+            ('Sales Date', 15),
+            ('Grace', 10),
+            ('Sale Amount', 15),
+            ('Sales Return', 15),
+            ('Net Sales', 15),
+            ('Received', 15),
+            ('Cleared', 15),
+            ('Claims', 15),
+            ('Total Due', 15)
+        ]
+
+        for col_num, (title, width) in enumerate(columns, start=1):
+            ws.column_dimensions[get_column_letter(col_num)].width = width
+
+        # Apply number formatting
+        number_columns = [5, 6, 7, 8, 9, 10, 11]  # Columns E-K
+        number_format = '#,##0.' + '0' * settings.DECIMAL_PLACES
+
+        for col_num in number_columns:
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_num, max_col=col_num):
+                for cell in row:
+                    cell.number_format = number_format
+
+        # Create Excel table with filters# Change this line in export_excel():
+        #tab = Table(name="InvoiceChequeData", ref=f"A1:{get_column_letter(len(columns))}{len(queryset)+1}")
+        tab = Table(displayName="InvoiceChequeData", ref=f"A1:{get_column_letter(len(columns))}{len(queryset)+1}")
+        style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
+                            showLastColumn=False, showRowStripes=True, showColumnStripes=False)
+        tab.tableStyleInfo = style
+        ws.add_table(tab)
 
         wb.save(response)
         return response
+
 
     @action(detail=False, methods=['get'])
     def export_pdf(self, request):
@@ -595,18 +629,32 @@ class CIvsChequeReportView(ViewSet):
 
         # Create data table
         data = [['Branch', 'Invoice', 'Date', 'Sales Amt', 'Claims','Net', 'Received', 'Cleared',  'Total Due']]
+        # Modify the PDF export action
         for item in queryset:
             data.append([
                 item['branch__name'],
                 item['invoice_no'],
-                item['transaction_date'].strftime('%Y-%m-%d'),
-                f"{item['due_amount']:.2f}",
-                f"{item['total_claim']:.2f}",
-                f"{item['net_sales']:.2f}",
-                f"{item['received']:.2f}",
-                f"{item['cleared']:.2f}",
-                f"{item['total_due']:.2f}"
+                item['transaction_date'].strftime(settings.DATE_FORMAT),
+                f"{item['due_amount']:.{settings.DECIMAL_PLACES}f}",
+                f"{item['total_claim']:.{settings.DECIMAL_PLACES}f}",
+                f"{item['net_sales']:.{settings.DECIMAL_PLACES}f}",
+                f"{item['received']:.{settings.DECIMAL_PLACES}f}",
+                f"{item['cleared']:.{settings.DECIMAL_PLACES}f}",
+                f"{item['total_due']:.{settings.DECIMAL_PLACES}f}"
             ])
+        
+        # for item in queryset:
+        #     data.append([
+        #         item['branch__name'],
+        #         item['invoice_no'],
+        #         item['transaction_date'].strftime('%Y-%m-%d'),
+        #         f"{item['due_amount']:.2f}",
+        #         f"{item['total_claim']:.2f}",
+        #         f"{item['net_sales']:.2f}",
+        #         f"{item['received']:.2f}",
+        #         f"{item['cleared']:.2f}",
+        #         f"{item['total_due']:.2f}"
+        #     ])
 
         # Create table
         table = Table(data, colWidths=[60, 60, 60, 50, 50, 50, 50, 50, 60])

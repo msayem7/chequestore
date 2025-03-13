@@ -154,14 +154,7 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
                 if str(claim.alias_id) not in seen_claims:
                     claim.delete()
 
-    # def update(self, instance, validated_data):
-    #     if 'customer' in validated_data:
-    #         validated_data['payment_grace_days'] = validated_data['customer'].grace_days 
 
-    #     # validated_data['version'] = str(int(instance['version'])+1)
-    #     return super().update(instance, validated_data)
-
-    # ------------------------------------------------
 class InvoiceChequeMapSerializer(serializers.ModelSerializer):
     creditinvoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
     cheque_store = serializers.SlugRelatedField(slug_field='alias_id', queryset=ChequeStore.objects.all())
@@ -181,8 +174,6 @@ class ChequeStoreSerializer(serializers.ModelSerializer):
 
     sum_adjustment = serializers.SerializerMethodField(read_only=True)  # Changed to method field
     
-    # ... keep other existing fields ...
-
     def get_sum_adjustment(self, obj):
         return obj.invoice_cheques.aggregate(
             total=models.Sum('adjusted_amount')
@@ -208,17 +199,20 @@ class ChequeStoreSerializer(serializers.ModelSerializer):
             raise ValidationError("Receiving date cannot be in the future")
             #raise serializers.ValidationError("Receiving date cannot be in the future")
         return data
-    
+
+
 class ClaimCategorySerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(
         slug_field='alias_id',
         queryset=Branch.objects.all(),
         required=True
     ) 
+
     class Meta:
         model= ClaimCategory
         fields = ['alias_id', 'branch', 'category_name', 'is_active',  'version'] #'updated_at', 'updated_by',
         read_only_fields = ['alias_id',  'version']      #'updated_at', 'updated_by',
+
 
 class MasterClaimSerializer(serializers.ModelSerializer):
     
@@ -232,48 +226,13 @@ class MasterClaimSerializer(serializers.ModelSerializer):
         required=True
     )
     
-    # claim_category = serializers.SlugRelatedField(
-    #     slug_field='alias_id',
-    #     queryset=ClaimCategory.objects.all(),
-    #     required=True
-    # )
-    # claim_category_name = serializers.CharField(
-    #     source='claim_category.category_name', 
-    #     read_only=True
-    # )
-    
     class Meta:
         model = MasterClaim
-        # fields = [
-        #     'alias_id', 'branch', 'claim_name', 
-        #     'claim_category', 'claim_category_name',
-        #     'is_active', 'version'
-        # ]
+
         fields = [
             'alias_id', 'branch', 'claim_name', 'category',
             'is_active', 'updated_at', 'updated_by', 'version'
         ]
-# class MasterClaimSerializer(serializers.ModelSerializer):
-#     branch = serializers.SlugRelatedField(
-#         slug_field='alias_id',
-#         queryset=Branch.objects.all(),
-#         required=True
-#     )
-    
-#     claim_category = serializers.SlugRelatedField(
-#         slug_field='alias_id',
-#         queryset=ClaimCategory.objects.all(),  
-#         required=True
-#     )
-#     claim_category_name = serializers.CharField(source='claim_category.category_name', read_only=True)
-    
-#     class Meta:
-#         model = MasterClaim
-#         fields = [
-#             'alias_id', 'branch', 'claim_name', 
-#             'claim_category', 'claim_category_name', 
-#             'is_active', 'updated_at', 'updated_by', 'version'
-#         ]
 
 
 class CustomerClaimSerializer(serializers.ModelSerializer):

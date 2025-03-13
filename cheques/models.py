@@ -80,6 +80,7 @@ class Customer(models.Model):
     def __str__(self):
         return self.name
 
+
 class CreditInvoice(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
@@ -152,6 +153,7 @@ class InvoiceChequeMap(models.Model):
     def __str__(self):
         return str(self.creditinvoice + " : "+ self.cheque_store)
 
+
 class ClaimCategory(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
@@ -165,13 +167,13 @@ class ClaimCategory(models.Model):
         db_table = 'Claim_Catatory'
         verbose_name = 'Claim Catatory'
         verbose_name_plural = 'Claim Catatories'
-    
+
+
 class MasterClaim(models.Model):
     class CategoryChoices(models.TextChoices):
         RETURN = 'SRTN', 'Sales Return'
         OTHER = 'OTH', 'Other Claims'
-
-    
+   
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     claim_name = models.TextField( blank=False, null=False) #name should be branch wise unique
@@ -187,8 +189,8 @@ class MasterClaim(models.Model):
 
     def __str__(self):
         return str(self.claim_name)
-    
-     
+
+
 class CustomerClaim(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
