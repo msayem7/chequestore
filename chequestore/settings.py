@@ -35,7 +35,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-i+a!0^q$gt^l9-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 
-ALLOWED_HOSTS = ['yourusername.pythonanywhere.com', 'ezcheque.netlify.app', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com','ezcheque.netlify.app', 'localhost', '127.0.0.1']
 
 
 # Application definition
@@ -94,8 +94,23 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "user-agent",
     "x-csrftoken",
-    "x-requested-with"
+    "x-requested-with",
+    "x-access-token",
+    "csrftoken",
 ]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
+CORS_ALLOW_PRIVATE_NETWORK = True
+
+# if DEBUG:
+#     CORS_ALLOW_ALL_ORIGINS = True
+#     CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+#     SESSION_COOKIE_SAMESITE = 'None'
+#     CSRF_COOKIE_SAMESITE = 'None'
+#     SESSION_COOKIE_SECURE = True
+#     CSRF_COOKIE_SECURE = True
+
 
 ROOT_URLCONF = 'chequestore.urls'
 
