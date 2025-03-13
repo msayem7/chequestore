@@ -1,9 +1,0 @@
-# Ignore database file
-**/db.sqlite3
-# Python bytecode
-__pycache__/
-*.py[cod]
-*.log
-*.pot
-build/
-.venv
