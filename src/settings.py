@@ -115,7 +115,7 @@ CORS_ALLOW_PRIVATE_NETWORK = True
 #     CSRF_COOKIE_SECURE = True
 
 
-ROOT_URLCONF = 'chequestore.urls'
+ROOT_URLCONF = 'src.urls'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -161,7 +161,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'chequestore.wsgi.application'
+WSGI_APPLICATION = 'src.wsgi.application'
 
 
 # Database
