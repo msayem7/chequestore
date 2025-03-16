@@ -39,7 +39,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@
 # DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['ezcheque.netlify.app', 'localhost', '127.0.0.1']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
+ALLOWED_HOSTS = ['ezcheque.netlify.app', 'localhost', '127.0.0.1', 'https://chequestore.onrender.com']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
 
 # Application definition
 
