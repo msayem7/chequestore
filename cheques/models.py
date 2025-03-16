@@ -1,5 +1,5 @@
 from django.db import models
-from chequestore.inve_lib.inve_lib import generate_slugify_id, generate_alias_id
+from src.inve_lib.inve_lib import generate_slugify_id, generate_alias_id
 from django.contrib.auth.models import User
 from django.utils import timezone
 from PIL import Image
