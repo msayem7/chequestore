@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 from datetime import timedelta
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -162,17 +163,34 @@ WSGI_APPLICATION = 'chequestore.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
+
+
+
+DATABASES = {
+    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
+}
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'TIMEOUT': 20,
-        'OPTIONS': {
-            'timeout': 20,
-        }
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME', 'ezchq'),      # Database name
+        'USER': os.environ.get('DB_USER', 'postgres'),      # Database user
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'sa1234'),  # Database password
+        'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
+        'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
     }
 }
+# # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#         'TIMEOUT': 20,
+#         'OPTIONS': {
+#             'timeout': 20,
+#         }
+#     }
+# }
+
 
 # DATABASES = {
 #     'default': {
