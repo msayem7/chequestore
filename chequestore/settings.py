@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 import dj_database_url
+from decouple import config 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,13 +32,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ALLOWED_HOSTS = []
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-i+a!0^q$gt^l9-ecyasa@90^f#&m%ed1aat*-bo82+n7hpt7&o')
+# SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-i+a!0^q$gt^l9-ecyasa@90^f#&m%ed1aat*-bo82+n7hpt7&o')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@90^f#&m%ed1aat*-bo82+n7hpt7&o')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
+# DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com','ezcheque.netlify.app', 'localhost', '127.0.0.1']
-
+ALLOWED_HOSTS = ['ezcheque.netlify.app', 'localhost', '127.0.0.1']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
 
 # Application definition
 
@@ -164,21 +166,23 @@ WSGI_APPLICATION = 'chequestore.wsgi.application'
 
 # Database
 
-
-
+# DATABASES = {
+#     'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
+# }
 DATABASES = {
-    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
+    'default': dj_database_url.config(default=config('DATABASE_URL', default='sqlite:///db.sqlite3'))
 }
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'ezchq'),      # Database name
-        'USER': os.environ.get('DB_USER', 'postgres'),      # Database user
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'sa1234'),  # Database password
-        'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
-        'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.environ.get('DB_NAME', 'ezchq'),      # Database name
+#         'USER': os.environ.get('DB_USER', 'postgres'),      # Database user
+#         'PASSWORD': os.environ.get('DB_PASSWORD', 'sa1234'),  # Database password
+#         'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
+#         'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
+#     }
+# }
+
 # # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 # DATABASES = {
 #     'default': {
