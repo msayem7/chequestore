@@ -246,5 +246,5 @@ class CustomerClaimSerializer(serializers.ModelSerializer):
         model = CustomerClaim
         fields = ['alias_id', 'branch', 'creditinvoice', 'claim','claim_date', 'claim_name', 'claim_amount',  'updated_by', 'version']
         read_only_fields = ['alias_id',  'updated_by', 'version']
-    
+
     

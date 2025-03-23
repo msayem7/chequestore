@@ -39,7 +39,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@
 # DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['ezcheque.netlify.app', 'localhost', '127.0.0.1', 'https://chequestore.onrender.com', 'chequestore.onrender.com']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
+ALLOWED_HOSTS = ['ezdist.netlify.app','ezcheque.netlify.app', 'localhost', '127.0.0.1',  'chequestore.onrender.com']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
 
 # Application definition
 
@@ -75,8 +75,9 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",  # Your Vue.js development server URL
-    "https://uuuuuu.pythonanywhere.com",
-    "https://ezcheque.netlify.app"
+    # "https://uuuuuu.pythonanywhere.com",
+    "https://ezcheque.netlify.app",
+    "https://ezdist.netlify.app"
 ]
 
 CORS_ALLOW_METHODS = [
@@ -125,6 +126,11 @@ REST_FRAMEWORK = {
 
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend'
+    ],
+    
+    'EXCEPTION_HANDLER': 'cheques.exception_handler.custom_exception_handler',
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
     ]
 }
 
@@ -262,3 +268,43 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 DATE_FORMAT = '%b %d, %Y'  # Mar 04, 2025 format
 DECIMAL_PLACES = 0
+
+
+
+# import os
+# settings.py
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)  # Create logs directory if not exists
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOGS_DIR, 'errors.log'),
+            'maxBytes': 1024*1024*5,  # 5MB
+            'backupCount': 5,
+            'formatter': 'verbose'
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
