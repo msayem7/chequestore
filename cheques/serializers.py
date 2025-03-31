@@ -179,22 +179,137 @@ class MasterClaimSerializer(serializers.ModelSerializer):
         model = MasterClaim
 
         fields = [
-            'alias_id', 'branch', 'claim_name',
-            'is_active'
+            'alias_id', 'branch', 'claim_name', 'is_active'
         ]
         # , 'updated_at', 'updated_by', 'version'
 
 
+# class CustomerClaimSerializer(serializers.ModelSerializer):
+#     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+#     # creditinvoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
+#     claim = serializers.SlugRelatedField(slug_field='alias_id', queryset=MasterClaim.objects.all())
+#     claim_name = serializers.CharField(source='claim.claim_name', read_only=True)
+#     claim_date =  serializers.DateField(format='%Y-%m-%d', input_formats=['%Y-%m-%d']) #, input_formats=['%d-%m-%Y']
+
+#     class Meta:
+#         model = CustomerClaim
+#         fields = ['branch', 'claim_no', 'claim', 'claim_name', 'claim_amount', 'details'] #'creditinvoice',
+       
 class CustomerClaimSerializer(serializers.ModelSerializer):
-    branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
-    creditinvoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
-    claim = serializers.SlugRelatedField(slug_field='alias_id', queryset=MasterClaim.objects.all())
-    claim_name = serializers.CharField(source='claim.claim_name', read_only=True)
-    claim_date =  serializers.DateField(format='%Y-%m-%d', input_formats=['%Y-%m-%d']) #, input_formats=['%d-%m-%Y']
+    claim = serializers.SlugRelatedField(
+        slug_field='alias_id', 
+        queryset=MasterClaim.objects.all()
+    )
 
     class Meta:
         model = CustomerClaim
-        fields = ['alias_id', 'branch', 'creditinvoice', 'claim','claim_date', 'claim_name', 'claim_amount',  'updated_by', 'version']
-        read_only_fields = ['alias_id',  'updated_by', 'version']
+        fields = [
+           'claim_no', 'claim', 'claim_amount', 'details'
+        ]
+
+class ChequeStoreSerializer(serializers.ModelSerializer):
+    # branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+    # customer_payment = serializers.SlugRelatedField(slug_field='alias_id', queryset=CustomerPayment.objects.all(), required=False)
+
+    class Meta:
+        model = ChequeStore
+        fields = [
+            'cheque_no', 'cheque_date', 'cheque_detail',
+            'cheque_amount', 'cheque_image', 'cheque_status'
+        ]
+    # class Meta:
+    #     model = ChequeStore
+    #     fields = '__all__'
+    #     read_only_fields = ('alias_id', 'version', 'updated_at', 'updated_by')
+
+
+class CustomerPaymentSerializer(serializers.ModelSerializer):
+    branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+    customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all())
+    cheques = ChequeStoreSerializer(many=True, required=False)
+    claims = CustomerClaimSerializer(many=True, required=False)
+
+    class Meta:
+        model = CustomerPayment
+        fields = (
+            'alias_id', 'branch', 'customer', 'received_date', 
+            'version', 'cheques', 'claims'
+        )
+        read_only_fields = ('alias_id', 'version', )
+
+    def validate(self, data):
+        # Check cheque uniqueness
+        branch = data['branch']
+        cheque_nos = [ch['cheque_no'] for ch in data.get('cheques', [])]
+        if ChequeStore.objects.filter(branch=branch, cheque_no__in=cheque_nos).exists():
+            raise serializers.ValidationError("Cheque number must be unique per branch")
+
+        # Check claim uniqueness
+        claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
+        if CustomerClaim.objects.filter(branch=branch, claim_no__in=claim_nos).exists():
+            raise serializers.ValidationError("Claim number must be unique per branch")
+
+        return data
+
+    def create(self, validated_data):
+        cheques_data = validated_data.pop('cheques', [])
+        claims_data = validated_data.pop('claims', [])
+        payment = super().create(validated_data)
+        user = self.context['request'].user
+        branch = payment.branch  # Get branch from parent payment
+
+        # Create cheques with branch from parent
+        for cheque_data in cheques_data:
+            ChequeStore.objects.create(
+                customer_payment=payment,
+                branch=branch,  # Add branch here
+                cheque_status=ChequeStore.ChequeStatus.RECEIVED,
+                **cheque_data
+            )
+
+        # Create claims with branch from parent'updated_at', 'updated_by'
+        for claim_data in claims_data:
+            CustomerClaim.objects.create(
+                customer_payment=payment,
+                branch=branch,  # Add branch here
+                **claim_data
+            )
+
+        return payment 
+    
 
     
+# class CustomerPaymentSerializer(serializers.ModelSerializer):
+#     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+#     customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all())
+#     cheques = ChequeStoreSerializer(many=True, required=False)
+#     claims = CustomerClaimSerializer(many=True, required=False)
+
+#     class Meta:
+#         model = CustomerPayment
+#         fields = ('branch', 'customer','received_date', 'version')
+#         read_only_fields = ('alias_id', 'version', 'updated_at', 'updated_by')
+
+#     @transaction.atomic
+#     def create(self, validated_data):
+#         cheques_data = validated_data.pop('cheques', [])
+#         claims_data = validated_data.pop('claims', [])
+#         payment = super().create(validated_data)
+        
+#         # Create cheques
+#         for cheque_data in cheques_data:
+#             ChequeStore.objects.create(
+#                 customer_payment=payment,
+#                 **cheque_data,
+#                 updated_by=self.context['request'].user
+#             )
+        
+#         # Create claims
+#         for claim_data in claims_data:
+#             CustomerClaim.objects.create(
+#                 customer_payment=payment,
+#                 **claim_data,
+#                 updated_by=self.context['request'].user
+#             )
+        
+#         return payment

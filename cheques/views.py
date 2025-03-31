@@ -1,3 +1,7 @@
+
+# from .models import 
+# from .serializers import CustomerPaymentSerializer
+# from django.db import transaction
 # Standard library imports
 import io
 import json
@@ -5,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 # Django imports
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.db.models import Sum, Case, When, Q, F, DecimalField
 from django.db import transaction
 from django.core.exceptions import ValidationError
@@ -37,8 +41,9 @@ from openpyxl import Workbook
 from .models import (
     Company, Branch, Customer, CreditInvoice,
     ChequeStore, InvoiceChequeMap, MasterClaim,
-    CustomerClaim
+    CustomerClaim, CustomerPayment
 )
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -235,7 +240,7 @@ class MasterClaimViewSet(viewsets.ModelViewSet):
 class CustomerClaimViewSet(viewsets.ModelViewSet):
     queryset = CustomerClaim.objects.all()
     serializer_class = serializers.CustomerClaimSerializer
-    lookup_field = 'alias_id'
+    lookup_field = 'claim_no'
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -260,3 +265,30 @@ class CustomerClaimViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Version conflict'}, status=status.HTTP_409_CONFLICT)
         
         return super().update(request, *args, **kwargs)
+
+class CustomerPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = serializers.CustomerPaymentSerializer
+    queryset = CustomerPayment.objects.all()
+    lookup_field = 'alias_id'
+
+    def get_queryset(self):
+        return self.queryset.filter(
+            branch__alias_id=self.request.query_params.get('branch')
+        ).select_related('customer', 'branch')
+    
+# class CustomerPaymentViewSet(viewsets.ModelViewSet):
+#     serializer_class = serializers.CustomerPaymentSerializer
+#     queryset = CustomerPayment.objects.all()
+#     lookup_field = 'alias_id'
+
+#     def get_queryset(self):
+#         return self.queryset.filter(
+#             branch__alias_id=self.request.query_params.get('branch')
+#         ).select_related('customer', 'branch')
+
+#     @transaction.atomic
+#     def perform_create(self, serializer):
+#         serializer.save(
+#             updated_by=self.request.user,
+#             branch_id=self.request.data.get('branch')
+#         )

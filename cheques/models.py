@@ -94,7 +94,7 @@ class CreditInvoice(models.Model):
     sales_return = models.DecimalField(max_digits=18, decimal_places=4)
     payment_grace_days = models.IntegerField(default=0)
     invoice_image = models.ImageField(upload_to='invoices/', null=True)
-    status = models.BooleanField(default=True)  # this will be inactive
+    status = models.BooleanField(default=True)  # True = Net sale amount is not fully adjusted, False= Fully adjusted
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     version = models.IntegerField(default=1)
@@ -129,7 +129,7 @@ class CustomerPayment(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
     received_date = models.DateField(blank=False, null=False)
-    isActive = models.BooleanField(default=True)
+    # isActive = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
     version = models.IntegerField(default=1)
@@ -139,7 +139,7 @@ class CustomerPayment(models.Model):
         verbose_name_plural = 'Customer Payments'
 
     def __str__(self):
-        return self.received_date +' - ' + self.customer.name
+        return f"{self.received_date} - {self.customer.name}"
 
 class ChequeStore(models.Model):   
     class ChequeStatus(models.IntegerChoices):
@@ -148,8 +148,8 @@ class ChequeStore(models.Model):
         HONORED = 3, 'Honored'
         BOUNCED = 4, 'Bounced' 
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    cheque_no = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
+    cheque_no = models.TextField( max_length=10)
+    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=False)
     cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
     cheque_date = models.DateField(null=True, blank=True)
     cheque_amount = models.DecimalField(max_digits=18, decimal_places=4)
@@ -157,6 +157,12 @@ class ChequeStore(models.Model):
     cheque_status = models.IntegerField(choices=ChequeStatus.choices, default=ChequeStatus.RECEIVED)
 
     class Meta:
+        # constraints = [
+        #     models.UniqueConstraint(
+        #         fields=['branch', 'cheque_no'], 
+        #         name='unique_cheque_no_bk'   #bk = business key
+        #     )
+        # ]
         db_table = 'cheque_store'
         verbose_name = 'Cheque Store'
         verbose_name_plural = 'Cheque Stores'
@@ -181,12 +187,18 @@ class InvoiceChequeMap(models.Model):
 
 class CustomerClaim(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    claim_no = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
+    claim_no = models.TextField(max_length=10, editable=True)
     claim = models.ForeignKey(MasterClaim,on_delete=models.PROTECT, blank=False, null=False)
+    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
     details = models.TextField( blank=True, null=True)
     claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
     class Meta:
+        # constraints = [
+        #     models.UniqueConstraint(
+        #         fields=['branch', 'claim_no'], 
+        #         name='unique_claim_no_bk'
+        #     )
+        # ]
         db_table = 'customer_claim'
         verbose_name = 'Customer Claim'
         verbose_name_plural = 'Customer Claims'
