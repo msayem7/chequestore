@@ -1,4 +1,4 @@
-
+from django.views.decorators.cache import never_cache
 
 from django.contrib import admin
 from django.urls import path, include

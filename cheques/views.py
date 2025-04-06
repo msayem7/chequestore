@@ -10,10 +10,14 @@ from decimal import Decimal
 
 # Django imports
 from django.http import HttpResponse, JsonResponse
-from django.db.models import Sum, Case, When, Q, F, DecimalField
+from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper
+from django.db.models import Subquery, OuterRef
+from django.db.models.functions import Coalesce
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+from django.views.decorators.cache import never_cache
+from django.utils.decorators import method_decorator  # 👈 Add this import
 
 # Django REST Framework imports
 from rest_framework import viewsets, status
@@ -40,8 +44,8 @@ from openpyxl import Workbook
 # Local imports
 from .models import (
     Company, Branch, Customer, CreditInvoice,
-    ChequeStore, InvoiceChequeMap, MasterClaim,
-    CustomerClaim, CustomerPayment
+    ChequeStore, InvoiceChequeMap, InvoiceClaimMap, 
+    MasterClaim, CustomerClaim, CustomerPayment
 )
 
 
@@ -140,26 +144,100 @@ class HasCustomerActivity(viewsets.ModelViewSet):
             return has_activity
         except Customer.DoesNotExist:
             return False
-        
+
+
 class CreditInvoiceViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.CreditInvoiceSerializer
     queryset = CreditInvoice.objects.all()
     lookup_field = 'alias_id'
-
+    
     def get_queryset(self):
-        queryset = super().get_queryset()
-        params = self.request.query_params
 
-        if branch := params.get('branch'):
+        # Subquery for cheque allocations
+        cheque_subquery = (
+            InvoiceChequeMap.objects
+            .filter(credit_invoice=OuterRef('pk'))
+            .values('credit_invoice')
+            .annotate(total=Sum('adjusted_amount'))
+            .values('total')
+        )
+
+        # Subquery for claim allocations
+        claim_subquery = (
+            InvoiceClaimMap.objects
+            .filter(credit_invoice=OuterRef('pk'))
+            .values('credit_invoice')
+            .annotate(total=Sum('adjusted_amount'))
+            .values('total')
+        )
+
+        queryset = CreditInvoice.objects.annotate(
+            cheque_allocated=Coalesce(
+                Subquery(cheque_subquery, output_field=DecimalField()),
+                Decimal('0.0')
+            ),
+            claim_allocated=Coalesce(
+                Subquery(claim_subquery, output_field=DecimalField()),
+                Decimal('0.0')
+            ),
+            total_allocated=F('cheque_allocated') + F('claim_allocated'),
+            net_due=F('sales_amount') - F('sales_return') - F('total_allocated')
+        )
+        params = self.request.query_params
+        branch = params.get('branch')
+        customer = params.get('customer')
+        status = params.get('status')
+        date_from = params.get('transaction_date_after')
+        date_to = params.get('transaction_date_before')
+
+        # Apply filters
+        if branch:
             queryset = queryset.filter(branch__alias_id=branch)
-        if date_from := params.get('transaction_date_after'):
-            queryset = queryset.filter(transaction_date__gte=date_from)
-        if date_to := params.get('transaction_date_before'):
-            queryset = queryset.filter(transaction_date__lte=date_to)
-        if customer := params.get('customer'):
+        if customer:
             queryset = queryset.filter(customer__alias_id=customer)
+        if status:
+            is_active = status.lower() == 'true'
+            queryset = queryset.filter(status=is_active)
+        if date_from:
+            queryset = queryset.filter(transaction_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(transaction_date__lte=date_to)
+
+        return queryset.order_by('transaction_date')
+     
+        # params = self.request.query_params
+        # if branch := params.get('branch'):
+        #     queryset = queryset.filter(branch__alias_id=branch)
+        # if date_from := params.get('transaction_date_after'):
+        #     queryset = queryset.filter(transaction_date__gte=date_from)
+        # if date_to := params.get('transaction_date_before'):
+        #     queryset = queryset.filter(transaction_date__lte=date_to)
+        # if customer := params.get('customer'):
+        #     queryset = queryset.filter(customer__alias_id=customer)
+        # if status := params.get('status'):
+        #     is_active = status.lower() == 'true'  # Corrected filter
+        #     queryset = queryset.filter(status=is_active)
             
-        return queryset.order_by('transaction_date')  # Now properly sorted
+        # return queryset.order_by('transaction_date')
+
+    # def get_queryset(self):
+    #     queryset = super().get_queryset()
+    #     params = self.request.query_params
+
+    #     if branch := params.get('branch'):
+    #         queryset = queryset.filter(branch__alias_id=branch)
+    #     if date_from := params.get('transaction_date_after'):
+    #         queryset = queryset.filter(transaction_date__gte=date_from)
+    #     if date_to := params.get('transaction_date_before'):
+    #         queryset = queryset.filter(transaction_date__lte=date_to)
+    #     if customer := params.get('customer'):
+    #         queryset = queryset.filter(customer__alias_id=customer)
+    #     if status := params.get('status'):            
+    #         # is_active = status.lower() == 'true'
+    #         # queryset = queryset.filter(status=is_active)
+    #         queryset = queryset.filter(status == 'true')
+            
+    #     return queryset.order_by('transaction_date')  # Now properly sorted
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -186,6 +264,7 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+    @method_decorator(never_cache)  # 👈 Disable caching
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
         if latest := self.get_queryset().order_by('-transaction_date').first():
@@ -246,6 +325,7 @@ class CustomerClaimViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         branch = self.request.query_params.get('branch')
         invoice = self.request.query_params.get('invoice')
+        # add filter using invoice__receipt_no
 
         if branch:
             queryset = queryset.filter(branch__alias_id=branch)

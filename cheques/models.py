@@ -153,16 +153,10 @@ class ChequeStore(models.Model):
     cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
     cheque_date = models.DateField(null=True, blank=True)
     cheque_amount = models.DecimalField(max_digits=18, decimal_places=4)
-    cheque_detail = models.TextField(null=False, blank=False, default='')
+    cheque_detail = models.TextField(null=False, blank=True, default='')
     cheque_status = models.IntegerField(choices=ChequeStatus.choices, default=ChequeStatus.RECEIVED)
 
     class Meta:
-        # constraints = [
-        #     models.UniqueConstraint(
-        #         fields=['branch', 'cheque_no'], 
-        #         name='unique_cheque_no_bk'   #bk = business key
-        #     )
-        # ]
         db_table = 'cheque_store'
         verbose_name = 'Cheque Store'
         verbose_name_plural = 'Cheque Stores'
@@ -172,7 +166,7 @@ class ChequeStore(models.Model):
 
 class InvoiceChequeMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    creditinvoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE)  # Fixed
+    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE)  # Fixed
     cheque_store = models.ForeignKey(ChequeStore, on_delete=models.CASCADE, related_name='invoice_cheques')
     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
 
@@ -193,12 +187,6 @@ class CustomerClaim(models.Model):
     details = models.TextField( blank=True, null=True)
     claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
     class Meta:
-        # constraints = [
-        #     models.UniqueConstraint(
-        #         fields=['branch', 'claim_no'], 
-        #         name='unique_claim_no_bk'
-        #     )
-        # ]
         db_table = 'customer_claim'
         verbose_name = 'Customer Claim'
         verbose_name_plural = 'Customer Claims'
