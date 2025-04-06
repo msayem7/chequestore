@@ -318,7 +318,4 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                     adjusted_amount=amount,
                     branch=payment.branch
                 )
-        
         return payment
-
-  
