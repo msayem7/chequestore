@@ -43,7 +43,7 @@ from openpyxl import Workbook
 
 # Local imports
 from .models import (
-    Company, Branch, Customer, CreditInvoice,
+    Branch, Customer, CreditInvoice,
     ChequeStore, InvoiceChequeMap, InvoiceClaimMap, 
     MasterClaim, CustomerClaim, CustomerPayment
 )
@@ -57,11 +57,6 @@ def user_detail(request):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = serializers.CustomTokenObtainPairSerializer
-
-
-class CompanyViewSet(viewsets.ModelViewSet):
-    queryset = Company.objects.all()
-    serializer_class = serializers.CompanySerializer
 
 class BranchViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.BranchSerializer
@@ -106,14 +101,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        branch_id = self.request.query_params.get('branch')
-        
-        print( 'self.request.query_params.get', self.request.query_params.get('is_active', 'true').lower())
-           
+        branch_id = self.request.query_params.get('branch')        
+         
         #if not self.request.user.is_staff:  # Example: admins see all
         if self.request.query_params.get('is_active'):
             is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
-            print('is_active',is_active, 'self.request.query_params.get', self.request.query_params.get('is_active', 'true').lower())
+            # print('is_active',is_active, 'self.request.query_params.get', self.request.query_params.get('is_active', 'true').lower())
             queryset = queryset.filter(is_active=is_active)
         
         # Filter by branch alias_id
@@ -125,6 +118,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
             is_parent = self.request.query_params.get('is_parent', 'true').lower() == 'true'
             queryset = queryset.filter(is_parent=is_parent)
         
+        # print('queryset :', print(str(queryset.query)))
         return queryset
     
     def update(self, request, *args, **kwargs):

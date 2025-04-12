@@ -1,6 +1,6 @@
 from django.db import models, transaction
 from rest_framework import serializers
-from .models import (Company, Branch, ChequeStore, InvoiceChequeMap, 
+from .models import (Branch, ChequeStore, InvoiceChequeMap, 
                      Customer, CreditInvoice, MasterClaim, CustomerClaim, CustomerPayment, InvoiceClaimMap)
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.utils import timezone
@@ -26,13 +26,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
         return data
     
-class CompanySerializer(serializers.ModelSerializer):
-    alias_id = serializers.CharField(read_only=True)
-
-    class Meta:
-        model = Company
-        fields = ['alias_id','company_name', 'email','mobile']
-        # fields = '__all__'
 
 
 class BranchSerializer(serializers.ModelSerializer):
@@ -130,13 +123,12 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
 
 class InvoiceChequeMapSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
-    creditinvoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
-    cheque_store = serializers.SlugRelatedField(slug_field='alias_id', queryset=ChequeStore.objects.all())
-
+    credit_invoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
+    cheque_store = serializers.SlugRelatedField(slug_field='cheque_no', queryset=ChequeStore.objects.all())
+    
     class Meta:
         model = InvoiceChequeMap
         fields = '__all__'
-        read_only_fields = ('version', 'updated_at', 'updated_by')
 
 
 class MasterClaimSerializer(serializers.ModelSerializer):

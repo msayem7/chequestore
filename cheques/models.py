@@ -4,17 +4,6 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from PIL import Image
 
-class Company(models.Model):
-    alias_id = models.CharField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    company_name = models.TextField()
-    email = models.EmailField(unique=True)
-    mobile = models.TextField(null=False)
-    version = models.IntegerField(default=0)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return f"{self.company_name}"  
-
 class BranchType(models.IntegerChoices):
     HEAD_OFFICE = 1, 'Head Office'
     BRANCH = 2, 'Branch'
@@ -39,6 +28,7 @@ class Branch(models.Model):
     version = models.IntegerField(default=1)
     
     class Meta:
+        db_table = 'branch'
         verbose_name = 'Branch'
         verbose_name_plural = 'Branches'
 
@@ -75,6 +65,7 @@ class Customer(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
+        db_table = 'customer'
         verbose_name = 'Customer'
         verbose_name_plural = 'Customers'
 
@@ -100,6 +91,7 @@ class CreditInvoice(models.Model):
     version = models.IntegerField(default=1)
 
     class Meta:
+        db_table = 'credit_invoice'
         verbose_name = 'Credit Invoice'
         verbose_name_plural = 'Credit Invoices'
 
@@ -135,6 +127,7 @@ class CustomerPayment(models.Model):
     version = models.IntegerField(default=1)
 
     class Meta:
+        db_table = 'customer_payment'
         verbose_name = 'Customer Payment'
         verbose_name_plural = 'Customer Payments'
 
@@ -162,11 +155,11 @@ class ChequeStore(models.Model):
         verbose_name_plural = 'Cheque Stores'
 
     def __str__(self):
-        return self.alias_id
+        return self.cheque_no
 
 class InvoiceChequeMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE)  # Fixed
+    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='cheque_allocations')  # Fixed
     cheque_store = models.ForeignKey(ChequeStore, on_delete=models.CASCADE, related_name='invoice_cheques')
     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
 
@@ -176,7 +169,7 @@ class InvoiceChequeMap(models.Model):
         verbose_name_plural = 'Invoice Cheque Maps'
 
     def __str__(self):
-        return str(self.creditinvoice + " : "+ self.cheque_store)
+        return f"{self.credit_invoice} : {self.cheque_store}"
 
 
 class CustomerClaim(models.Model):
