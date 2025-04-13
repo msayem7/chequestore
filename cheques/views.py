@@ -126,7 +126,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
             return  Response({'error': 'Customer has active invoices or cheques. Inactivation is not possible'}, status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
 
-
 class HasCustomerActivity(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = serializers.CustomerSerializer
@@ -134,10 +133,26 @@ class HasCustomerActivity(viewsets.ModelViewSet):
     def has_Activity(self, request, *args, **kwargs):
         try:
             customer = get_object_or_404(Customer, alias_id=request.parser_context['kwargs']['alias_id'])
-            has_activity = customer.creditinvoice_set.exists() or customer.chequestore_set.exists()
+            # Check for credit invoices or cheque stores related to this customer
+            has_activity = (
+                CreditInvoice.objects.filter(customer=customer).exists() or
+                ChequeStore.objects.filter(customer_payment__customer=customer).exists()
+            )
             return has_activity
         except Customer.DoesNotExist:
             return False
+        
+# class HasCustomerActivity(viewsets.ModelViewSet):
+#     queryset = Customer.objects.all()
+#     serializer_class = serializers.CustomerSerializer
+
+#     def has_Activity(self, request, *args, **kwargs):
+#         try:
+#             customer = get_object_or_404(Customer, alias_id=request.parser_context['kwargs']['alias_id'])
+#             has_activity = customer.creditinvoice_set.exists() or customer.chequestore_set.exists()
+#             return has_activity
+#         except Customer.DoesNotExist:
+#             return False
 
 
 class CreditInvoiceViewSet(viewsets.ModelViewSet):
