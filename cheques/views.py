@@ -5,14 +5,14 @@
 # Standard library imports
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 # Django imports
 from django.http import HttpResponse, JsonResponse
-from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper
+from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper, DurationField, DateField
 from django.db.models import Subquery, OuterRef
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Cast
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
@@ -336,7 +336,19 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
 #             updated_by=self.request.user,
 #             branch_id=self.request.data.get('branch')
 #         )
-# Add to views.py
+
+
+from django.db.models import (
+    F, Sum, DecimalField, ExpressionWrapper, DurationField, DateField
+)
+from django.db.models.functions import Coalesce, Cast
+from datetime import timedelta, datetime, date
+from decimal import Decimal
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import Customer, Branch, CreditInvoice, CustomerPayment, ChequeStore, CustomerClaim
+
 class CustomerStatementViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
     
@@ -354,54 +366,66 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             )
         
         try:
+            # Convert string dates to date objects (not datetime)
+            from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+            to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+            
             # Get the customer and branch
             customer = Customer.objects.get(alias_id=customer_id, branch__alias_id=branch_id)
             branch = Branch.objects.get(alias_id=branch_id)
             
-            # Calculate opening balance (all transactions before date_from)
-            opening_balance = self._calculate_opening_balance(customer, branch, date_from)
+            # Calculate opening balance
+            opening_balance = self._calculate_opening_balance(customer, branch, from_date)
             
-            # Get sales transactions
+            # Get sales transactions with calculated payment date
             sales_data = CreditInvoice.objects.filter(
                 customer=customer,
-                branch=branch,
-                transaction_date__gte=date_from,
-                transaction_date__lte=date_to
+                branch=branch
             ).annotate(
+                payment_date=ExpressionWrapper(
+                    F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
+                    output_field=DateField()
+                ),
                 net_sales=F('sales_amount') - F('sales_return')
+            ).filter(
+                payment_date__gte=from_date,
+                payment_date__lte=to_date
             ).values(
                 'transaction_date',
+                'payment_date',
                 'invoice_no',
                 'transaction_details',
                 'sales_amount',
                 'sales_return',
                 'net_sales',
+                'payment_grace_days'
             )
             
             # Get cheque transactions
+            # Get cheque transactions with proper field aliasing
             cheque_data = ChequeStore.objects.filter(
                 customer_payment__customer=customer,
                 branch=branch,
-                customer_payment__received_date__gte=date_from,
-                customer_payment__received_date__lte=date_to
+                customer_payment__received_date__gte=from_date,
+                customer_payment__received_date__lte=to_date
             ).select_related('customer_payment').values(
-                'customer_payment__received_date',
                 'cheque_no',
                 'cheque_detail',
-                'cheque_amount'
+                'cheque_amount',
+                received_date=F('customer_payment__received_date')
             )
             
             # Get claim transactions
             claim_data = CustomerClaim.objects.filter(
                 customer_payment__customer=customer,
                 branch=branch,
-                customer_payment__received_date__gte=date_from,
-                customer_payment__received_date__lte=date_to
+                customer_payment__received_date__gte=from_date,
+                customer_payment__received_date__lte=to_date
             ).select_related('customer_payment', 'claim').values(
-                'customer_payment__received_date',
                 'claim_no',
                 'details',
-                'claim_amount'
+                'claim_amount',
+                received_date=F('customer_payment__received_date')
             )
             
             # Prepare statement data
@@ -412,7 +436,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             statement_data.append({
                 'transaction_type_id': 0,
                 'transaction_type_name': 'Opening Balance',
-                'date': datetime.strptime(date_from, '%Y-%m-%d').date(),
+                'date': from_date,
                 'particular': 'Opening Balance',
                 'sales_amount': Decimal('0'),
                 'sales_return': Decimal('0'),
@@ -424,12 +448,25 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             # Process sales transactions
             for sale in sales_data:
                 current_balance += sale['net_sales']
-                particular = f"Invoice No = {sale['invoice_no']} {sale['transaction_details'] or ''}"
+                transaction_date = sale['transaction_date']
+                if isinstance(transaction_date, datetime):
+                    transaction_date = transaction_date.date()
                 
+                payment_date = sale['payment_date']
+                if isinstance(payment_date, datetime):
+                    payment_date = payment_date.date()
+                
+                particular = (
+                    f"Invoice No: {sale['invoice_no']}, "
+                    f"Sales Date: {transaction_date.strftime('%Y-%m-%d')}, "
+                    f"Due Date: {payment_date.strftime('%Y-%m-%d')}, "
+                    f"Grace Days: {sale['payment_grace_days']}, "
+                    f"Details: {sale['transaction_details'] or ''}"
+                )
                 statement_data.append({
                     'transaction_type_id': 1,
                     'transaction_type_name': 'Sales',
-                    'date': sale['transaction_date'],
+                    'date': payment_date,
                     'particular': particular.strip(),
                     'sales_amount': sale['sales_amount'],
                     'sales_return': sale['sales_return'],
@@ -441,12 +478,16 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             # Process cheque transactions
             for cheque in cheque_data:
                 current_balance -= cheque['cheque_amount']
+                received_date = cheque['received_date']
+                if isinstance(received_date, datetime):
+                    received_date = received_date.date()
+                
                 particular = f"{cheque['cheque_no']} {cheque['cheque_detail'] or ''}"
                 
                 statement_data.append({
                     'transaction_type_id': 2,
                     'transaction_type_name': 'Cheque',
-                    'date': cheque['customer_payment__received_date'],
+                    'date': received_date,
                     'particular': particular.strip(),
                     'sales_amount': Decimal('0'),
                     'sales_return': Decimal('0'),
@@ -458,12 +499,16 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             # Process claim transactions
             for claim in claim_data:
                 current_balance -= claim['claim_amount']
+                received_date = claim['received_date']
+                if isinstance(received_date, datetime):
+                    received_date = received_date.date()
+                
                 particular = f"Claim No: {claim['claim_no']} {claim['details'] or ''}"
                 
                 statement_data.append({
                     'transaction_type_id': 3,
                     'transaction_type_name': 'Claim',
-                    'date': claim['customer_payment__received_date'],
+                    'date': received_date,
                     'particular': particular.strip(),
                     'sales_amount': Decimal('0'),
                     'sales_return': Decimal('0'),
@@ -500,31 +545,36 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
-    def _calculate_opening_balance(self, customer, branch, date_from):
-        """Calculate opening balance as of date_from"""
-        # Sum all sales before date_from
-        print('customer', customer, 'branch', branch, 'date_from', date_from)
+    def _calculate_opening_balance(self, customer, branch, cutoff_date):
+        """Calculate opening balance as of cutoff_date"""
+        # Sum all sales with payment date before cutoff
         sales_before = CreditInvoice.objects.filter(
             customer=customer,
-            branch=branch,
-            transaction_date__lt=date_from
+            branch=branch
+        ).annotate(
+            payment_date=ExpressionWrapper(
+                F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
+                output_field=DateField()
+            )
+        ).filter(
+            payment_date__lt=cutoff_date
         ).aggregate(
             total_sales=Coalesce(Sum('sales_amount'), Decimal('0')),
             total_returns=Coalesce(Sum('sales_return'), Decimal('0'))
         )
         
-        # Sum all payments before date_from
+        # Sum all payments before cutoff date
         payments_before = CustomerPayment.objects.filter(
             customer=customer,
             branch=branch,
-            received_date__lt=date_from
+            received_date__lt=cutoff_date
         ).aggregate(
             total_cheques=Coalesce(
-                Sum('chequestore__cheque_amount'),  # Changed from 'cheques__' to 'chequestore__'
+                Sum('chequestore__cheque_amount'),
                 Decimal('0')
             ),
             total_claims=Coalesce(
-                Sum('customerclaim__claim_amount'),  # Changed from 'claims__' to 'customerclaim__'
+                Sum('customerclaim__claim_amount'),
                 Decimal('0')
             )
         )
