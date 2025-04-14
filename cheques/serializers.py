@@ -25,8 +25,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'email': self.user.email
         }
         return data
-    
-
 
 class BranchSerializer(serializers.ModelSerializer):
     parent = serializers.SlugRelatedField(

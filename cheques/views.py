@@ -201,39 +201,6 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by('transaction_date')
      
-        # params = self.request.query_params
-        # if branch := params.get('branch'):
-        #     queryset = queryset.filter(branch__alias_id=branch)
-        # if date_from := params.get('transaction_date_after'):
-        #     queryset = queryset.filter(transaction_date__gte=date_from)
-        # if date_to := params.get('transaction_date_before'):
-        #     queryset = queryset.filter(transaction_date__lte=date_to)
-        # if customer := params.get('customer'):
-        #     queryset = queryset.filter(customer__alias_id=customer)
-        # if status := params.get('status'):
-        #     is_active = status.lower() == 'true'  # Corrected filter
-        #     queryset = queryset.filter(status=is_active)
-            
-        # return queryset.order_by('transaction_date')
-
-    # def get_queryset(self):
-    #     queryset = super().get_queryset()
-    #     params = self.request.query_params
-
-    #     if branch := params.get('branch'):
-    #         queryset = queryset.filter(branch__alias_id=branch)
-    #     if date_from := params.get('transaction_date_after'):
-    #         queryset = queryset.filter(transaction_date__gte=date_from)
-    #     if date_to := params.get('transaction_date_before'):
-    #         queryset = queryset.filter(transaction_date__lte=date_to)
-    #     if customer := params.get('customer'):
-    #         queryset = queryset.filter(customer__alias_id=customer)
-    #     if status := params.get('status'):            
-    #         # is_active = status.lower() == 'true'
-    #         # queryset = queryset.filter(status=is_active)
-    #         queryset = queryset.filter(status == 'true')
-            
-    #     return queryset.order_by('transaction_date')  # Now properly sorted
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
