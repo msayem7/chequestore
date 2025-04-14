@@ -199,6 +199,7 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(transaction_date__lte=date_to)
 
+        # print ('queryset :', print(str(queryset.query)))
         return queryset.order_by('transaction_date')
      
 
@@ -335,3 +336,204 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
 #             updated_by=self.request.user,
 #             branch_id=self.request.data.get('branch')
 #         )
+# Add to views.py
+class CustomerStatementViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+    
+    def list(self, request):
+        # Get query parameters
+        branch_id = request.query_params.get('branch')
+        customer_id = request.query_params.get('customer')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        
+        if not all([branch_id, customer_id, date_from, date_to]):
+            return Response(
+                {'error': 'Customer, date_from and date_to parameters are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the customer and branch
+            customer = Customer.objects.get(alias_id=customer_id, branch__alias_id=branch_id)
+            branch = Branch.objects.get(alias_id=branch_id)
+            
+            # Calculate opening balance (all transactions before date_from)
+            opening_balance = self._calculate_opening_balance(customer, branch, date_from)
+            
+            # Get sales transactions
+            sales_data = CreditInvoice.objects.filter(
+                customer=customer,
+                branch=branch,
+                transaction_date__gte=date_from,
+                transaction_date__lte=date_to
+            ).annotate(
+                net_sales=F('sales_amount') - F('sales_return')
+            ).values(
+                'transaction_date',
+                'invoice_no',
+                'transaction_details',
+                'sales_amount',
+                'sales_return',
+                'net_sales',
+            )
+            
+            # Get cheque transactions
+            cheque_data = ChequeStore.objects.filter(
+                customer_payment__customer=customer,
+                branch=branch,
+                customer_payment__received_date__gte=date_from,
+                customer_payment__received_date__lte=date_to
+            ).select_related('customer_payment').values(
+                'customer_payment__received_date',
+                'cheque_no',
+                'cheque_detail',
+                'cheque_amount'
+            )
+            
+            # Get claim transactions
+            claim_data = CustomerClaim.objects.filter(
+                customer_payment__customer=customer,
+                branch=branch,
+                customer_payment__received_date__gte=date_from,
+                customer_payment__received_date__lte=date_to
+            ).select_related('customer_payment', 'claim').values(
+                'customer_payment__received_date',
+                'claim_no',
+                'details',
+                'claim_amount'
+            )
+            
+            # Prepare statement data
+            statement_data = []
+            current_balance = opening_balance
+            
+            # Add opening balance row
+            statement_data.append({
+                'transaction_type_id': 0,
+                'transaction_type_name': 'Opening Balance',
+                'date': datetime.strptime(date_from, '%Y-%m-%d').date(),
+                'particular': 'Opening Balance',
+                'sales_amount': Decimal('0'),
+                'sales_return': Decimal('0'),
+                'net_sales': Decimal('0'),
+                'received': Decimal('0'),
+                'balance': opening_balance
+            })
+            
+            # Process sales transactions
+            for sale in sales_data:
+                current_balance += sale['net_sales']
+                particular = f"Invoice No = {sale['invoice_no']} {sale['transaction_details'] or ''}"
+                
+                statement_data.append({
+                    'transaction_type_id': 1,
+                    'transaction_type_name': 'Sales',
+                    'date': sale['transaction_date'],
+                    'particular': particular.strip(),
+                    'sales_amount': sale['sales_amount'],
+                    'sales_return': sale['sales_return'],
+                    'net_sales': sale['net_sales'],
+                    'received': Decimal('0'),
+                    'balance': current_balance
+                })
+            
+            # Process cheque transactions
+            for cheque in cheque_data:
+                current_balance -= cheque['cheque_amount']
+                particular = f"{cheque['cheque_no']} {cheque['cheque_detail'] or ''}"
+                
+                statement_data.append({
+                    'transaction_type_id': 2,
+                    'transaction_type_name': 'Cheque',
+                    'date': cheque['customer_payment__received_date'],
+                    'particular': particular.strip(),
+                    'sales_amount': Decimal('0'),
+                    'sales_return': Decimal('0'),
+                    'net_sales': Decimal('0'),
+                    'received': cheque['cheque_amount'],
+                    'balance': current_balance
+                })
+            
+            # Process claim transactions
+            for claim in claim_data:
+                current_balance -= claim['claim_amount']
+                particular = f"Claim No: {claim['claim_no']} {claim['details'] or ''}"
+                
+                statement_data.append({
+                    'transaction_type_id': 3,
+                    'transaction_type_name': 'Claim',
+                    'date': claim['customer_payment__received_date'],
+                    'particular': particular.strip(),
+                    'sales_amount': Decimal('0'),
+                    'sales_return': Decimal('0'),
+                    'net_sales': Decimal('0'),
+                    'received': claim['claim_amount'],
+                    'balance': current_balance
+                })
+            
+            # Sort by date and transaction type
+            statement_data.sort(key=lambda x: (x['date'], x['transaction_type_id']))
+            
+            # Serialize the data
+            serializer = serializers.CustomerStatementSerializer(statement_data, many=True)
+            
+            return Response({
+                'opening_balance': opening_balance,
+                'closing_balance': current_balance,
+                'transactions': serializer.data
+            })
+            
+        except Customer.DoesNotExist:
+            return Response(
+                {'error': 'Customer not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Branch.DoesNotExist:
+            return Response(
+                {'error': 'Branch not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _calculate_opening_balance(self, customer, branch, date_from):
+        """Calculate opening balance as of date_from"""
+        # Sum all sales before date_from
+        print('customer', customer, 'branch', branch, 'date_from', date_from)
+        sales_before = CreditInvoice.objects.filter(
+            customer=customer,
+            branch=branch,
+            transaction_date__lt=date_from
+        ).aggregate(
+            total_sales=Coalesce(Sum('sales_amount'), Decimal('0')),
+            total_returns=Coalesce(Sum('sales_return'), Decimal('0'))
+        )
+        
+        # Sum all payments before date_from
+        payments_before = CustomerPayment.objects.filter(
+            customer=customer,
+            branch=branch,
+            received_date__lt=date_from
+        ).aggregate(
+            total_cheques=Coalesce(
+                Sum('chequestore__cheque_amount'),  # Changed from 'cheques__' to 'chequestore__'
+                Decimal('0')
+            ),
+            total_claims=Coalesce(
+                Sum('customerclaim__claim_amount'),  # Changed from 'claims__' to 'customerclaim__'
+                Decimal('0')
+            )
+        )
+        
+        opening_balance = (
+            sales_before['total_sales'] - 
+            sales_before['total_returns'] - 
+            payments_before['total_cheques'] - 
+            payments_before['total_claims']
+        )
+        
+        return opening_balance

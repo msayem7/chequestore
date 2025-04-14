@@ -2,8 +2,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import ( CustomerViewSet
                     , BranchViewSet, CreditInvoiceViewSet
-                    ,   MasterClaimViewSet
-                    , CustomerClaimViewSet, CustomerPaymentViewSet) # InvoiceChequeMapViewSet, ChequeStoreViewSet,
+                    , MasterClaimViewSet
+                    , CustomerClaimViewSet, CustomerPaymentViewSet
+                    , CustomerStatementViewSet) # InvoiceChequeMapViewSet, ChequeStoreViewSet,
 
 
 router = DefaultRouter()
@@ -16,6 +17,7 @@ router.register(r'master-claims', MasterClaimViewSet)
 # router.register(r'claim-categories', ClaimCategoryViewSet)
 router.register(r'customer-claims', CustomerClaimViewSet)
 router.register(r'customer-payments', CustomerPaymentViewSet)
+router.register(r'customer-statement', CustomerStatementViewSet, basename='customer-statement')
 
 
 

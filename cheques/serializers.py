@@ -312,3 +312,14 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         return payment
 
   
+  # Add to serializers.py
+class CustomerStatementSerializer(serializers.Serializer):
+    transaction_type_id = serializers.IntegerField()
+    transaction_type_name = serializers.CharField()
+    date = serializers.DateField()
+    particular = serializers.CharField()
+    sales_amount = serializers.DecimalField(max_digits=18, decimal_places=4)
+    sales_return = serializers.DecimalField(max_digits=18, decimal_places=4)
+    net_sales = serializers.DecimalField(max_digits=18, decimal_places=4)
+    received = serializers.DecimalField(max_digits=18, decimal_places=4)
+    balance = serializers.DecimalField(max_digits=18, decimal_places=4)
