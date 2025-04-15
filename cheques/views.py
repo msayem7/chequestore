@@ -447,7 +447,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             
             # Process sales transactions
             for sale in sales_data:
-                current_balance += sale['net_sales']
+                # current_balance += sale['net_sales']
                 transaction_date = sale['transaction_date']
                 if isinstance(transaction_date, datetime):
                     transaction_date = transaction_date.date()
@@ -472,12 +472,13 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                     'sales_return': sale['sales_return'],
                     'net_sales': sale['net_sales'],
                     'received': Decimal('0'),
-                    'balance': current_balance
+                    'balance': 0
+                    # 'balance': current_balance
                 })
             
             # Process cheque transactions
             for cheque in cheque_data:
-                current_balance -= cheque['cheque_amount']
+                # current_balance -= cheque['cheque_amount']
                 received_date = cheque['received_date']
                 if isinstance(received_date, datetime):
                     received_date = received_date.date()
@@ -493,12 +494,13 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                     'sales_return': Decimal('0'),
                     'net_sales': Decimal('0'),
                     'received': cheque['cheque_amount'],
-                    'balance': current_balance
+                    'balance': 0
+                    # 'balance': current_balance
                 })
             
             # Process claim transactions
             for claim in claim_data:
-                current_balance -= claim['claim_amount']
+                # current_balance -= claim['claim_amount']
                 received_date = claim['received_date']
                 if isinstance(received_date, datetime):
                     received_date = received_date.date()
@@ -514,12 +516,17 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                     'sales_return': Decimal('0'),
                     'net_sales': Decimal('0'),
                     'received': claim['claim_amount'],
-                    'balance': current_balance
+                    'balance': 0
+                    # 'balance': current_balance
                 })
             
             # Sort by date and transaction type
             statement_data.sort(key=lambda x: (x['date'], x['transaction_type_id']))
-            
+            for tr in statement_data:
+                 tr['balance'] =  current_balance+ tr['net_sales'] - tr['received']   
+                 current_balance = tr['balance']
+                               
+            # print (statement_data)
             # Serialize the data
             serializer = serializers.CustomerStatementSerializer(statement_data, many=True)
             
