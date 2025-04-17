@@ -159,14 +159,14 @@ class CustomerClaimSerializer(serializers.ModelSerializer):
         ]
 
 class ChequeStoreSerializer(serializers.ModelSerializer):
-    # branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
-    # customer_payment = serializers.SlugRelatedField(slug_field='alias_id', queryset=CustomerPayment.objects.all(), required=False)
+    instrument_type = serializers.IntegerField(default=2)  # Default to Cheque (2)
 
     class Meta:
         model = ChequeStore
         fields = [
             'cheque_no', 'cheque_date', 'cheque_detail',
-            'cheque_amount', 'cheque_image', 'cheque_status'
+            'cheque_amount', 'cheque_image', 'cheque_status',
+            'instrument_type'
         ]
 
 class CustomerPaymentSerializer(serializers.ModelSerializer):
@@ -187,10 +187,14 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     def validate(self, data):
         # Check cheque uniqueness within the same branch
         branch = data['branch']
+        
+        for cheque_data in data.get('cheques', []):
+            if not cheque_data.get('cheque_no'):
+                raise serializers.ValidationError("Cheque number is required for cheque instruments.")
+        
         cheque_nos = [ch['cheque_no'] for ch in data.get('cheques', [])]
         claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
-        
-        
+
         # 1. Validate positive allocations
         for invoice_id, allocation in data.get('allocations', {}).items():
             for amount in allocation.get('cheques', {}).values():
@@ -268,7 +272,12 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                 customer_payment=payment,
                 branch=branch,
                 cheque_status=ChequeStore.ChequeStatus.RECEIVED,
-                **cheque_data
+                instrument_type=cheque_data.get('instrument_type', 2),  # Default to Cheque (2)
+                cheque_no=cheque_data['cheque_no'],
+                cheque_date=cheque_data.get('cheque_date'),
+                cheque_detail=cheque_data.get('cheque_detail', ''),
+                cheque_amount=cheque_data['cheque_amount'],
+                cheque_image=cheque_data.get('cheque_image')               
             )
 
         # Create claims

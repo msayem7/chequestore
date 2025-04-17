@@ -1,51 +1,98 @@
+# import io
+# import json
+# from datetime import datetime, timedelta
+# from decimal import Decimal
 
-# from .models import 
-# from .serializers import CustomerPaymentSerializer
+# # Django imports
+# from django.http import HttpResponse, JsonResponse
+# from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper, DurationField, DateField
+# from django.db.models import Subquery, OuterRef
+# from django.db.models.functions import Coalesce, Cast
 # from django.db import transaction
-# Standard library imports
+# from django.core.exceptions import ValidationError
+# from django.shortcuts import get_object_or_404
+# from django.views.decorators.cache import never_cache
+# from django.utils.decorators import method_decorator  # 👈 Add this import
+
+# # Django REST Framework imports
+# from rest_framework import viewsets, status
+# from rest_framework.viewsets import ViewSet
+# from rest_framework.response import Response
+# from rest_framework.permissions import IsAuthenticated
+
+# from cheques import serializers
+# from django.conf import settings
+
+# from rest_framework.decorators import api_view, permission_classes, action
+
+# from rest_framework_simplejwt.views import TokenObtainPairView
+
+# from django_filters import rest_framework as filters
+
+# # Third-party imports
+# from reportlab.pdfgen import canvas
+# from reportlab.lib.pagesizes import letter
+# from reportlab.platypus import Table, TableStyle
+# from reportlab.lib import colors
+# from openpyxl import Workbook
+
+# Local imports
+# from .models import (
+#     Branch, Customer, CreditInvoice,
+#     ChequeStore, InvoiceChequeMap, InvoiceClaimMap, 
+#     MasterClaim, CustomerClaim, CustomerPayment
+# )
+
+
+# --------------------Organized Imports--------------------
+# Standard Library Imports
 import io
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from decimal import Decimal
 
-# Django imports
-from django.http import HttpResponse, JsonResponse
-from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper, DurationField, DateField
-from django.db.models import Subquery, OuterRef
-from django.db.models.functions import Coalesce, Cast
-from django.db import transaction
+# Django Imports
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import (
+    F, Sum, DecimalField, ExpressionWrapper, DurationField, DateField,
+    Subquery, OuterRef, Q, Case, When
+)
+from django.db.models.functions import Coalesce, Cast
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
-from django.utils.decorators import method_decorator  # 👈 Add this import
+from django.utils.decorators import method_decorator
 
-# Django REST Framework imports
+# Django REST Framework Imports
 from rest_framework import viewsets, status
-from rest_framework.viewsets import ViewSet
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-
-from cheques import serializers
-from django.conf import settings
-
-from rest_framework.decorators import api_view, permission_classes, action
-
+from rest_framework.views import APIView
+from rest_framework.viewsets import ViewSet
 from rest_framework_simplejwt.views import TokenObtainPairView
-
 from django_filters import rest_framework as filters
 
-# Third-party imports
+# Third-Party Imports
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from openpyxl import Workbook
 
-# Local imports
+# Local Application Imports
 from .models import (
-    Branch, Customer, CreditInvoice,
-    ChequeStore, InvoiceChequeMap, InvoiceClaimMap, 
-    MasterClaim, CustomerClaim, CustomerPayment
+    Branch, Customer, CreditInvoice, CustomerPayment, ChequeStore,
+    CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
+)
+
+from cheques import serializers
+from .serializers import ( # You'll need to create these serializers
+    BranchSerializer, CustomerSerializer, CreditInvoiceSerializer,
+    CustomerPaymentSerializer, ChequeStoreSerializer, CustomerClaimSerializer,
+    InvoiceChequeMapSerializer, MasterClaimSerializer
 )
 
 
@@ -338,16 +385,16 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
 #         )
 
 
-from django.db.models import (
-    F, Sum, DecimalField, ExpressionWrapper, DurationField, DateField
-)
-from django.db.models.functions import Coalesce, Cast
-from datetime import timedelta, datetime, date
-from decimal import Decimal
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .models import Customer, Branch, CreditInvoice, CustomerPayment, ChequeStore, CustomerClaim
+# from django.db.models import (
+#     F, Sum, DecimalField, ExpressionWrapper, DurationField, DateField
+# )
+# from django.db.models.functions import Coalesce, Cast
+# from datetime import timedelta, datetime, date
+# from decimal import Decimal
+# from rest_framework import viewsets, status
+# from rest_framework.response import Response
+# from rest_framework.permissions import IsAuthenticated
+# from .models import Customer, Branch, CreditInvoice, CustomerPayment, ChequeStore, CustomerClaim
 
 class CustomerStatementViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -409,6 +456,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                 customer_payment__received_date__gte=from_date,
                 customer_payment__received_date__lte=to_date
             ).select_related('customer_payment').values(
+                'instrument_type', 
                 'cheque_no',
                 'cheque_detail',
                 'cheque_amount',
@@ -431,7 +479,14 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             # Prepare statement data
             statement_data = []
             current_balance = opening_balance
-            
+
+            INSTRUMENT_TYPE_NAMES = {
+                1: 'Cash',
+                2: 'Cheque',
+                3: 'Bank',  # For Demand Draft
+                4: 'EFT',
+                5: 'RTGS'
+            }
             # Add opening balance row
             statement_data.append({
                 'transaction_type_id': 0,
@@ -484,10 +539,10 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                     received_date = received_date.date()
                 
                 particular = f"{cheque['cheque_no']} {cheque['cheque_detail'] or ''}"
-                
+                instrument_type_name = INSTRUMENT_TYPE_NAMES.get(cheque['instrument_type'], 'Unknown')
                 statement_data.append({
                     'transaction_type_id': 2,
-                    'transaction_type_name': 'Cheque',
+                    'transaction_type_name': instrument_type_name,
                     'date': received_date,
                     'particular': particular.strip(),
                     'sales_amount': Decimal('0'),
@@ -525,7 +580,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             for tr in statement_data:
                  tr['balance'] =  current_balance+ tr['net_sales'] - tr['received']   
                  current_balance = tr['balance']
-                               
+                  
             # print (statement_data)
             # Serialize the data
             serializer = serializers.CustomerStatementSerializer(statement_data, many=True)

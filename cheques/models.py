@@ -140,7 +140,14 @@ class ChequeStore(models.Model):
         DEPOSITED = 2, 'Deposited'
         HONORED = 3, 'Honored'
         BOUNCED = 4, 'Bounced' 
+    class instrument_type(models.IntegerChoices):
+        CASH = 1, 'Cash'
+        CHEQUE = 2, 'Cheque'
+        DD = 3, 'Demand Draft'
+        EFT = 4, 'EFT'
+        RTGS = 5, 'RTGS'
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+    instrument_type = models.IntegerField(choices=instrument_type.choices, default=instrument_type.CHEQUE)
     cheque_no = models.TextField( max_length=10)
     customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=False)
     cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
