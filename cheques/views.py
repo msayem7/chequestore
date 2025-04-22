@@ -457,7 +457,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                 customer_payment__received_date__lte=to_date
             ).select_related('customer_payment').values(
                 'instrument_type', 
-                'cheque_no',
+                'receipt_no',
                 'cheque_detail',
                 'cheque_amount',
                 received_date=F('customer_payment__received_date')
@@ -483,7 +483,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             INSTRUMENT_TYPE_NAMES = {
                 1: 'Cash',
                 2: 'Cheque',
-                3: 'Bank',  # For Demand Draft
+                3: 'Pay Order',  # For Demand Draft
                 4: 'EFT',
                 5: 'RTGS'
             }
@@ -538,7 +538,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                 if isinstance(received_date, datetime):
                     received_date = received_date.date()
                 
-                particular = f"{cheque['cheque_no']} {cheque['cheque_detail'] or ''}"
+                particular = f"{cheque['receipt_no']} {cheque['cheque_detail'] or ''}"
                 instrument_type_name = INSTRUMENT_TYPE_NAMES.get(cheque['instrument_type'], 'Unknown')
                 statement_data.append({
                     'transaction_type_id': 2,

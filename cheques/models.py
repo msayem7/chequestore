@@ -143,12 +143,12 @@ class ChequeStore(models.Model):
     class instrument_type(models.IntegerChoices):
         CASH = 1, 'Cash'
         CHEQUE = 2, 'Cheque'
-        DD = 3, 'Demand Draft'
+        PO = 3, 'Pay Order'
         EFT = 4, 'EFT'
         RTGS = 5, 'RTGS'
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     instrument_type = models.IntegerField(choices=instrument_type.choices, default=instrument_type.CHEQUE)
-    cheque_no = models.TextField( max_length=10)
+    receipt_no = models.TextField( max_length=10)
     customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=False)
     cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
     cheque_date = models.DateField(null=True, blank=True)
@@ -162,7 +162,7 @@ class ChequeStore(models.Model):
         verbose_name_plural = 'Cheque Stores'
 
     def __str__(self):
-        return self.cheque_no
+        return self.receipt_no
 
 class InvoiceChequeMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)

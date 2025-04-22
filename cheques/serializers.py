@@ -122,7 +122,7 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
 class InvoiceChequeMapSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
     credit_invoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
-    cheque_store = serializers.SlugRelatedField(slug_field='cheque_no', queryset=ChequeStore.objects.all())
+    cheque_store = serializers.SlugRelatedField(slug_field='receipt_no', queryset=ChequeStore.objects.all())
     
     class Meta:
         model = InvoiceChequeMap
@@ -164,7 +164,7 @@ class ChequeStoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChequeStore
         fields = [
-            'cheque_no', 'cheque_date', 'cheque_detail',
+            'receipt_no', 'cheque_date', 'cheque_detail',
             'cheque_amount', 'cheque_image', 'cheque_status',
             'instrument_type'
         ]
@@ -189,10 +189,10 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         branch = data['branch']
         
         for cheque_data in data.get('cheques', []):
-            if not cheque_data.get('cheque_no'):
-                raise serializers.ValidationError("Cheque number is required for cheque instruments.")
+            if not cheque_data.get('receipt_no'):
+                raise serializers.ValidationError("Receipt number is required for cheque instruments.")
         
-        cheque_nos = [ch['cheque_no'] for ch in data.get('cheques', [])]
+        receipt_nos = [ch['receipt_no'] for ch in data.get('cheques', [])]
         claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
 
         # 1. Validate positive allocations
@@ -209,7 +209,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                     )
         
          # 2. Validate unique cheque/claim numbers within current order
-        if len(cheque_nos) != len(set(cheque_nos)):
+        if len(receipt_nos) != len(set(receipt_nos)):
             raise serializers.ValidationError(
                 "Cheque numbers must be unique within this payment"
             )
@@ -238,23 +238,23 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         # # Validate branch-wide uniqueness for cheques
         # if ChequeStore.objects.filter(
         #     branch=branch, 
-        #     cheque_no__in=cheque_nos
+        #     receipt_no__in=receipt_nos
         # ).exists():
         #     raise serializers.ValidationError("Branch wise cheque number must be unique")  
         
         # Validate branch-wide uniqueness for cheques
         cheque_qs = ChequeStore.objects.filter(
             branch=branch,
-            cheque_no__in=cheque_nos
+            receipt_no__in=receipt_nos
         )
 
         if self.instance and self.instance.pk:
             cheque_qs = cheque_qs.exclude(customer_payment=self.instance)
 
         if cheque_qs.exists():
-            existing = cheque_qs.values_list('cheque_no', flat=True)
+            existing = cheque_qs.values_list('receipt_no', flat=True)
             raise serializers.ValidationError({
-                'cheques': f"Cheque numbers {list(existing)} already exist in this branch"
+                'receipts': f"Receipt numbers {list(existing)} already exist in this branch"
             })
         return data
    
@@ -273,7 +273,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                 branch=branch,
                 cheque_status=ChequeStore.ChequeStatus.RECEIVED,
                 instrument_type=cheque_data.get('instrument_type', 2),  # Default to Cheque (2)
-                cheque_no=cheque_data['cheque_no'],
+                receipt_no=cheque_data['receipt_no'],
                 cheque_date=cheque_data.get('cheque_date'),
                 cheque_detail=cheque_data.get('cheque_detail', ''),
                 cheque_amount=cheque_data['cheque_amount'],
@@ -293,9 +293,9 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             invoice = CreditInvoice.objects.get(alias_id=invoice_id)
             
             # Cheque allocations
-            for cheque_no, amount in allocation['cheques'].items():
+            for receipt_no, amount in allocation['cheques'].items():
                 cheque = ChequeStore.objects.get(
-                    cheque_no=cheque_no,
+                    receipt_no=receipt_no,
                     customer_payment=payment
                 )
                 InvoiceChequeMap.objects.create(
