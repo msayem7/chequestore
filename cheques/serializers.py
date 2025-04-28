@@ -159,13 +159,19 @@ class CustomerClaimSerializer(serializers.ModelSerializer):
         ]
 
 class ChequeStoreSerializer(serializers.ModelSerializer):
-    instrument_type = serializers.IntegerField(default=2)  # Default to Cheque (2)
-
+    instrument_type = serializers.IntegerField(default=2)  # Default to Cheque (2)    
+    allocated = serializers.DecimalField(
+        max_digits=18, 
+        decimal_places=4, 
+        required=False,  # Make this field optional
+        read_only=True   # Let the server calculate this
+    )
+    
     class Meta:
         model = ChequeStore
         fields = [
             'receipt_no', 'cheque_date', 'cheque_detail',
-            'cheque_amount', 'cheque_image', 'cheque_status',
+            'cheque_amount', 'allocated', 'cheque_image', 'cheque_status',
             'instrument_type'
         ]
 
@@ -195,12 +201,26 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         receipt_nos = [ch['receipt_no'] for ch in data.get('cheques', [])]
         claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
 
+
+        # update empty values to '0' in allocations
+        for key, inner_dict in data.get('allocations', {}).items():
+            for data_type, value_dict in inner_dict.items():
+                for inner_key, value in value_dict.items():
+                    if value == '':
+                        data.get('allocations', {})[key][data_type][inner_key] = '0'
+        print(data.get('allocations', {}))
+
         # 1. Validate positive allocations
         for invoice_id, allocation in data.get('allocations', {}).items():
-            for amount in allocation.get('cheques', {}).values():
+            for amount in allocation.get('cheques', {}).values():                
                 if Decimal(amount) < Decimal('0'):
                     raise serializers.ValidationError(
-                        "Cheque allocations must be positive amounts"
+                        "Received allocations must be positive amounts"
+                    )
+            for amount in allocation.get('existing_payments', {}).values():
+                if Decimal(amount) < Decimal('0'):
+                    raise serializers.ValidationError(
+                        "Existing received allocations must be positive amounts"
                     )
             for amount in allocation.get('claims', {}).values():
                 if Decimal(amount) < Decimal('0'):
@@ -277,7 +297,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                 cheque_date=cheque_data.get('cheque_date'),
                 cheque_detail=cheque_data.get('cheque_detail', ''),
                 cheque_amount=cheque_data['cheque_amount'],
-                cheque_image=cheque_data.get('cheque_image')               
+                cheque_image=cheque_data.get('cheque_image')
             )
 
         # Create claims
@@ -294,29 +314,44 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             
             # Cheque allocations
             for receipt_no, amount in allocation['cheques'].items():
-                cheque = ChequeStore.objects.get(
-                    receipt_no=receipt_no,
-                    customer_payment=payment
-                )
-                InvoiceChequeMap.objects.create(
-                    credit_invoice=invoice,  # Correct field name
-                    cheque_store=cheque,
-                    adjusted_amount=amount,
-                    branch=payment.branch
-                )
+                if (Decimal(amount)>0):
+                    cheque = ChequeStore.objects.get(
+                        receipt_no=receipt_no,
+                        customer_payment=payment
+                    )
+                    InvoiceChequeMap.objects.create(
+                        credit_invoice=invoice,  # Correct field name
+                        cheque_store=cheque,
+                        adjusted_amount=amount,
+                        branch=payment.branch
+                    )
+                
+
+            for receipt_no, amount in allocation['existingPayments'].items():
+                if (Decimal(amount)>0):
+                    cheque = ChequeStore.objects.get(
+                        receipt_no=receipt_no
+                    )
+                    InvoiceChequeMap.objects.create(
+                        credit_invoice=invoice,  # Correct field name
+                        cheque_store=cheque,
+                        adjusted_amount=amount,
+                        branch=payment.branch
+                    )
                 
             # Claim allocations
             for claim_no, amount in allocation['claims'].items():
-                claim = CustomerClaim.objects.get(
-                    claim_no=claim_no,
-                    customer_payment=payment
-                )
-                InvoiceClaimMap.objects.create(
-                    credit_invoice=invoice,  # Correct field name
-                    customer_claim=claim,
-                    adjusted_amount=amount,
-                    branch=payment.branch
-                )
+                if (Decimal(amount)>0):
+                    claim = CustomerClaim.objects.get(
+                        claim_no=claim_no,
+                        customer_payment=payment
+                    )
+                    InvoiceClaimMap.objects.create(
+                        credit_invoice=invoice,  # Correct field name
+                        customer_claim=claim,
+                        adjusted_amount=amount,
+                        branch=payment.branch
+                    )
         
         return payment
 

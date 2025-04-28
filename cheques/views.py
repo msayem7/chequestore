@@ -1,47 +1,3 @@
-# import io
-# import json
-# from datetime import datetime, timedelta
-# from decimal import Decimal
-
-# # Django imports
-# from django.http import HttpResponse, JsonResponse
-# from django.db.models import Sum, Case, When, Q, F, DecimalField, ExpressionWrapper, DurationField, DateField
-# from django.db.models import Subquery, OuterRef
-# from django.db.models.functions import Coalesce, Cast
-# from django.db import transaction
-# from django.core.exceptions import ValidationError
-# from django.shortcuts import get_object_or_404
-# from django.views.decorators.cache import never_cache
-# from django.utils.decorators import method_decorator  # 👈 Add this import
-
-# # Django REST Framework imports
-# from rest_framework import viewsets, status
-# from rest_framework.viewsets import ViewSet
-# from rest_framework.response import Response
-# from rest_framework.permissions import IsAuthenticated
-
-# from cheques import serializers
-# from django.conf import settings
-
-# from rest_framework.decorators import api_view, permission_classes, action
-
-# from rest_framework_simplejwt.views import TokenObtainPairView
-
-# from django_filters import rest_framework as filters
-
-# # Third-party imports
-# from reportlab.pdfgen import canvas
-# from reportlab.lib.pagesizes import letter
-# from reportlab.platypus import Table, TableStyle
-# from reportlab.lib import colors
-# from openpyxl import Workbook
-
-# Local imports
-# from .models import (
-#     Branch, Customer, CreditInvoice,
-#     ChequeStore, InvoiceChequeMap, InvoiceClaimMap, 
-#     MasterClaim, CustomerClaim, CustomerPayment
-# )
 
 
 # --------------------Organized Imports--------------------
@@ -357,6 +313,28 @@ class CustomerClaimViewSet(viewsets.ModelViewSet):
         
         return super().update(request, *args, **kwargs)
 
+@api_view(['GET'])
+def unallocated_payments(request):
+    branch = request.query_params.get('branch')
+    customer = request.query_params.get('customer')
+    
+    if not branch or not customer:
+        return Response({'error': 'Branch and customer parameters are required'}, status=400)
+    
+    payments = ChequeStore.objects.filter(
+        branch__alias_id=branch,
+        customer_payment__customer__alias_id=customer
+    ).annotate(
+        allocated=Sum(Coalesce('invoice_cheques__adjusted_amount', Decimal(0)))
+    ).filter(
+        cheque_amount__gt=F('allocated') or 0
+    )
+    print(payments.query)
+    serializer = ChequeStoreSerializer(payments, many=True)
+    # print(serializer.data)
+    return Response(serializer.data)
+
+
 class CustomerPaymentViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.CustomerPaymentSerializer
     queryset = CustomerPayment.objects.all()
@@ -366,35 +344,6 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(
             branch__alias_id=self.request.query_params.get('branch')
         ).select_related('customer', 'branch')
-    
-# class CustomerPaymentViewSet(viewsets.ModelViewSet):
-#     serializer_class = serializers.CustomerPaymentSerializer
-#     queryset = CustomerPayment.objects.all()
-#     lookup_field = 'alias_id'
-
-#     def get_queryset(self):
-#         return self.queryset.filter(
-#             branch__alias_id=self.request.query_params.get('branch')
-#         ).select_related('customer', 'branch')
-
-#     @transaction.atomic
-#     def perform_create(self, serializer):
-#         serializer.save(
-#             updated_by=self.request.user,
-#             branch_id=self.request.data.get('branch')
-#         )
-
-
-# from django.db.models import (
-#     F, Sum, DecimalField, ExpressionWrapper, DurationField, DateField
-# )
-# from django.db.models.functions import Coalesce, Cast
-# from datetime import timedelta, datetime, date
-# from decimal import Decimal
-# from rest_framework import viewsets, status
-# from rest_framework.response import Response
-# from rest_framework.permissions import IsAuthenticated
-# from .models import Customer, Branch, CreditInvoice, CustomerPayment, ChequeStore, CustomerClaim
 
 class CustomerStatementViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
