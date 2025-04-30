@@ -141,7 +141,7 @@ class MasterClaimSerializer(serializers.ModelSerializer):
         model = MasterClaim
 
         fields = [
-            'alias_id', 'branch', 'claim_name', 'is_active'
+            'alias_id', 'branch', 'claim_name', 'prefix', 'next_number', 'is_active'
         ]
         # , 'updated_at', 'updated_by', 'version'
 
@@ -197,11 +197,30 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         for cheque_data in data.get('cheques', []):
             if not cheque_data.get('receipt_no'):
                 raise serializers.ValidationError("Receipt number is required for cheque instruments.")
+            
+        
+        for claim_data in data.get('claims', []):
+            if not claim_data.get('claim_no'):
+                raise serializers.ValidationError("Claim number is required for claims.")
+            else:
+                claim_data['claim_no'] = claim_data['claim_no'].strip()
+                if not claim_data['claim_no']:
+                    raise serializers.ValidationError("Claim number is required.") 
         
         receipt_nos = [ch['receipt_no'] for ch in data.get('cheques', [])]
         claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
+        last_claim_nos = [cl['claim_no'].strip()[-6:]  for cl in data.get('claims', [])]
 
+        #claims = data.get('claims', [])
+        # claim_nos, last_claim_nos = (
+        #     zip(*[
+        #         (cl['claim_no'], cl['claim_no'].strip()[-6:])  # Fixed tuple parentheses
+        #         for cl in claims
+        #     ]) if claims else ([], [])
+        # )
 
+        #claim_nos, last_claim_nos = (zip(*[(cl['claim_no'], cl['claim_no'].strip()[-6:]) for cl in claims]) if claims else ([], []))
+        
         # update empty values to '0' in allocations
         for key, inner_dict in data.get('allocations', {}).items():
             for data_type, value_dict in inner_dict.items():
@@ -267,6 +286,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
             branch=branch,
             receipt_no__in=receipt_nos
         )
+        
 
         if self.instance and self.instance.pk:
             cheque_qs = cheque_qs.exclude(customer_payment=self.instance)
@@ -285,7 +305,8 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         payment = super().create(validated_data)
         user = self.context['request'].user
         branch = payment.branch
-
+        print("validated_data", validated_data)
+        print("claims_data", claims_data)
         # Create cheques
         for cheque_data in cheques_data:
             ChequeStore.objects.create(
@@ -300,13 +321,31 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                 cheque_image=cheque_data.get('cheque_image')
             )
 
+
         # Create claims
         for claim_data in claims_data:
+            # next_number = claim_data.claim_no.strip()[-6:]
+
+            # def get_last_six_integer(input_str):
+            #     trimmed = input_str.strip()
+            #     last_six = trimmed[-6:] if len(trimmed) >= 6 else trimmed
+            #     return int(last_six) if last_six.isdigit() else 0
+            
+            #update last claim numner in MasterClaim
+            next_claim_no = claim_data['claim'].next_number +1 #int(claim_data['claim_no'].strip()[-6:]) + 1 #claim_data['claim_no'].strip()[-6:]
+            alias_id = claim_data['claim'].alias_id
+            # MasterClaim.objects.update(alias_id=alias_id, next_number=next_claim_no)
+            master_claim_instance = MasterClaim.objects.get(alias_id=alias_id)  # Corrected variable name
+            master_claim_instance.next_number = next_claim_no
+            master_claim_instance.save()
+            
+            print ("claim_data:- ", claim_data)
             CustomerClaim.objects.create(
                 customer_payment=payment,
                 branch=branch,
                 **claim_data
             )
+            
 
         # Create allocations
         for invoice_id, allocation in allocations.items():
@@ -352,6 +391,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                         adjusted_amount=amount,
                         branch=payment.branch
                     )
+                    
         
         return payment
 

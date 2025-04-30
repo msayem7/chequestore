@@ -329,7 +329,7 @@ def unallocated_payments(request):
     ).filter(
         cheque_amount__gt=F('allocated') or 0
     )
-    print(payments.query)
+    # print(payments.query)
     serializer = ChequeStoreSerializer(payments, many=True)
     # print(serializer.data)
     return Response(serializer.data)
@@ -344,6 +344,14 @@ class CustomerPaymentViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(
             branch__alias_id=self.request.query_params.get('branch')
         ).select_related('customer', 'branch')
+    
+    def create(self, request, *args, **kwargs):
+        with transaction.atomic():
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class CustomerStatementViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
