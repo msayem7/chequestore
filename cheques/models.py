@@ -35,7 +35,7 @@ class Branch(models.Model):
     def __str__(self):
         return f"{self.name}"
 
-    
+
 class Customer(models.Model):
     alias_id = models.TextField(
         max_length=10,
@@ -171,6 +171,7 @@ class InvoiceChequeMap(models.Model):
     credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='cheque_allocations')  # Fixed
     cheque_store = models.ForeignKey(ChequeStore, on_delete=models.CASCADE, related_name='invoice_cheques')
     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
+    adjusted_date = models.DateField(default=timezone.now)
 
     class Meta:
         db_table = 'invoice_cheque_map'
@@ -201,6 +202,7 @@ class InvoiceClaimMap(models.Model):
     credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT)  # Fixed
     customer_claim = models.ForeignKey(CustomerClaim, on_delete=models.PROTECT,  blank=False, null=False, related_name='invoice_claim')
     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
+    adjusted_date = models.DateField(default=timezone.now)
 
     class Meta:
         db_table = 'invoice_claim_map'

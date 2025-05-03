@@ -123,7 +123,8 @@ class InvoiceChequeMapSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
     credit_invoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
     cheque_store = serializers.SlugRelatedField(slug_field='receipt_no', queryset=ChequeStore.objects.all())
-    
+    adjusted_date = serializers.DateField(default=timezone.now)  # Include adjusted_date in serializer
+
     class Meta:
         model = InvoiceChequeMap
         fields = '__all__'
@@ -181,6 +182,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
     cheques = ChequeStoreSerializer(many=True, required=False)
     claims = CustomerClaimSerializer(many=True, required=False)
     allocations = serializers.JSONField(write_only=True, required=False)
+
 
     class Meta:
         model = CustomerPayment
@@ -304,9 +306,14 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
         allocations = validated_data.pop('allocations', {})
         payment = super().create(validated_data)
         user = self.context['request'].user
+
+        # Adjusted date from CustomerPayment's received_date
+        adjusted_date = payment.received_date
+
         branch = payment.branch
         print("validated_data", validated_data)
         print("claims_data", claims_data)
+
         # Create cheques
         for cheque_data in cheques_data:
             ChequeStore.objects.create(
@@ -362,6 +369,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                         credit_invoice=invoice,  # Correct field name
                         cheque_store=cheque,
                         adjusted_amount=amount,
+                        adjusted_date=adjusted_date,  # Set the adjusted date
                         branch=payment.branch
                     )
                 
@@ -375,6 +383,7 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                         credit_invoice=invoice,  # Correct field name
                         cheque_store=cheque,
                         adjusted_amount=amount,
+                        adjusted_date=adjusted_date,  # Set the adjusted date
                         branch=payment.branch
                     )
                 
@@ -389,14 +398,14 @@ class CustomerPaymentSerializer(serializers.ModelSerializer):
                         credit_invoice=invoice,  # Correct field name
                         customer_claim=claim,
                         adjusted_amount=amount,
+                        adjusted_date=adjusted_date,  # Set the adjusted date   
                         branch=payment.branch
                     )
-                    
         
         return payment
 
   
-  # Add to serializers.py
+  # Customer Statement
 class CustomerStatementSerializer(serializers.Serializer):
     transaction_type_id = serializers.IntegerField()
     transaction_type_name = serializers.CharField()
@@ -407,3 +416,13 @@ class CustomerStatementSerializer(serializers.Serializer):
     net_sales = serializers.DecimalField(max_digits=18, decimal_places=4)
     received = serializers.DecimalField(max_digits=18, decimal_places=4)
     balance = serializers.DecimalField(max_digits=18, decimal_places=4)
+
+
+# Parent Customer wise Due Report
+class ParentDueReportSerializer(serializers.Serializer):
+    parent_id = serializers.CharField()
+    parent_name = serializers.CharField()
+    net_sales = serializers.DecimalField(max_digits=18, decimal_places=4)
+    received = serializers.DecimalField(max_digits=18, decimal_places=4)
+    due = serializers.DecimalField(max_digits=18, decimal_places=4)
+

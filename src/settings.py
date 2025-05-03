@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'django_filters',
+    'django_extensions',
     'rest_framework_simplejwt',
     'cheques.apps.ChequesConfig', 
 
