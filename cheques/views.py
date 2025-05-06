@@ -15,11 +15,12 @@ from django.db.models import (
     F, Sum,Value, DecimalField, ExpressionWrapper, DurationField, DateField,
     Subquery, OuterRef, Q, Case, When
 )
-from django.db.models.functions import Coalesce, Cast
+from django.db.models.functions import Coalesce, Cast, Concat
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
+
 
 # Django REST Framework Imports
 from rest_framework import viewsets, status
@@ -120,10 +121,18 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get('is_parent'):
             is_parent = self.request.query_params.get('is_parent', 'true').lower() == 'true'
             queryset = queryset.filter(is_parent=is_parent)
+
+        queryset = queryset.annotate(
+            sort_order=Case(
+                When(parent__name__isnull=True, then=F('name')),
+                default=Concat('parent__name', 'name')
+            )
+        ).order_by('sort_order')
         
         # print('queryset :', print(str(queryset.query)))
         return queryset
     
+
     def update(self, request, *args, **kwargs):
         if (HasCustomerActivity.has_Activity(self, request)):
             return  Response({'error': 'Customer has active invoices or cheques. Inactivation is not possible'}, status=status.HTTP_409_CONFLICT)
@@ -747,130 +756,75 @@ class ParentDueReportView(APIView):
         
         return results
 
-# class ParentDueReportView(APIView):
+# from rest_framework.views import APIView
+# from rest_framework.response import Response
+# from rest_framework import status
+# from django.db.models import Sum, Q
+# from .models import CreditInvoice
+# from .serializers import InvoicePaymentReportSerializer
+# from datetime import datetime
 
-    
-#     def get(self, request):
-#         branch_alias = request.query_params.get('branch')
-#         cutoff_date = request.query_params.get('cutoff_date', '2050-12-31')
-#         sort_by = request.query_params.get('sort_by', 'due')
-
-#         try:
-#             branch = Branch.objects.get(alias_id=branch_alias)
-#         except Branch.DoesNotExist:
-#             return Response({"error": "Invalid branch ID"}, status=400)
-
-#         parent_org_dues = get_parent_org_dues(branch, cutoff_date, sort_by)
-
-#         return Response(parent_org_dues, status=200)
-    
-
-    
-    # def get_parent_org_dues(branch_id, end_date='2050-12-31', sort_by='due'):
-
-    #     """
-    #     Get parent organization dues with sorting options
+class InvoicePaymentReportView(APIView):
+    def get(self, request):
+        customer_id = request.query_params.get('customer_id')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        report_format = request.query_params.get('format', 'html')
         
-    #     Parameters:
-    #     - branch_id: Branch ID to filter by
-    #     - end_date: Cutoff date (default: '2025-12-31')
-    #     - sort_by: Sorting option ('due' for due amount descending or 'name' for name ascending)
-    #     """
-    #     # Validate sort_by parameter
-    #     valid_sort_options = ['due', 'name']
-    #     if sort_by not in valid_sort_options:
-    #         raise ValueError(f"Invalid sort_by parameter. Must be one of: {valid_sort_options}")
+        if not customer_id:
+            return Response(
+                {"error": "Customer ID is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    #     # Cheque Received subquery
-    #     cheque_received = CustomerPayment.objects.filter(
-    #         branch_id=branch_id,
-    #         received_date__lte=end_date
-    #     ).values('customer_id').annotate(
-    #         received=Sum('chequestore__cheque_amount', output_field=DecimalField(max_digits=18, decimal_places=4))
-    #     )
+        # Build query
+        query = Q(customer__alias_id=customer_id)
+        
+        if start_date:
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                query &= Q(transaction_date__gte=start_date)
+            except ValueError:
+                return Response(
+                    {"error": "Invalid start date format. Use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        if end_date:
+            try:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+                query &= Q(transaction_date__lte=end_date)
+            except ValueError:
+                return Response(
+                    {"error": "Invalid end date format. Use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-    #     # Claim Received subquery
-    #     claim_received = CustomerPayment.objects.filter(
-    #         branch_id=branch_id,
-    #         received_date__lte=end_date
-    #     ).values('customer_id').annotate(
-    #         received=Sum('customerclaim__claim_amount', output_field=DecimalField(max_digits=18, decimal_places=4))
-    #     )
-
-    #     # Invoice subquery
-    #     invoice = CreditInvoice.objects.filter(
-    #         branch_id=branch_id,
-    #         transaction_date__lte=end_date
-    #     ).values('customer_id').annotate(
-    #         net_sales=Sum(
-    #             F('sales_amount') - F('sales_return'),
-    #             output_field=DecimalField(max_digits=18, decimal_places=4)
-    #         )
-    #     )
-
-    #     # Combine all results and group by parent organization
-    #     from collections import defaultdict
+        invoices = CreditInvoice.objects.filter(query).order_by('transaction_date')
         
-    #     # Create a dictionary to store results by parent organization
-    #     parent_org_results = defaultdict(lambda: {
-    #         'parent_org_alias_id': '',
-    #         'parent_org_name': '',
-    #         'net_sales': 0,
-    #         'cash': 0,
-    #         'claim': 0,
-    #         'due': 0
-    #     })
-        
-    #     # Get all unique customer IDs
-    #     all_customers = set()
-    #     all_customers.update(item['customer_id'] for item in cheque_received)
-    #     all_customers.update(item['customer_id'] for item in claim_received)
-    #     all_customers.update(item['customer_id'] for item in invoice)
-        
-    #     # Prefetch parent information for all customers
-    #     customers_with_parents = Customer.objects.filter(
-    #         id__in=all_customers,
-    #         parent__isnull=False
-    #     ).select_related('parent')
-        
-    #     # Create mapping of customer to parent
-    #     customer_parent_map = {
-    #         cust.id: cust.parent 
-    #         for cust in customers_with_parents
-    #     }
-        
-    #     # Process each customer
-    #     for customer_id in all_customers:
-    #         parent = customer_parent_map.get(customer_id)
-    #         if not parent:
-    #             continue  # Skip customers without parent
+        # Calculate totals
+        for invoice in invoices:
             
-    #         # Find matching records in each queryset
-    #         cheque_data = next((item for item in cheque_received if item['customer_id'] == customer_id), {'received': 0})
-    #         claim_data = next((item for item in claim_received if item['customer_id'] == customer_id), {'received': 0})
-    #         invoice_data = next((item for item in invoice if item['customer_id'] == customer_id), {'net_sales': 0})
-            
-    #         # Calculate values
-    #         net_sales = invoice_data.get('net_sales', 0) or 0
-    #         cash = cheque_data.get('received', 0) or 0
-    #         claim = claim_data.get('received', 0) or 0
-    #         due = net_sales - cash - claim
-            
-    #         # Add to parent organization totals
-    #         parent_org_results[parent.id]['parent_org_alias_id'] = parent.alias_id
-    #         parent_org_results[parent.id]['parent_org_name'] = parent.name
-    #         parent_org_results[parent.id]['net_sales'] += net_sales
-    #         parent_org_results[parent.id]['cash'] += cash
-    #         parent_org_results[parent.id]['claim'] += claim
-    #         parent_org_results[parent.id]['due'] += due
-        
-    #     # Convert to list of dictionaries
-    #     results = list(parent_org_results.values())
-        
-    #     # Apply sorting
-    #     if sort_by == 'due':
-    #         results.sort(key=lambda x: x['due'], reverse=True)  # Descending order
-    #     elif sort_by == 'name':
-    #         results.sort(key=lambda x: x['parent_org_name'].lower())  # Case-insensitive ascending
-        
-    #     return results
+            cheque_allocated = invoice.cheque_allocations.aggregate(
+                total=Sum('adjusted_amount')
+            )['total'] or 0 
+            claim_allocated= invoice.claim_allocations.aggregate(
+                total=Sum('adjusted_amount')
+            )['total'] or 0
+
+            invoice.total_allocated  = cheque_allocated+claim_allocated
+            invoice.due_amount = invoice.sales_amount - invoice.sales_return - invoice.total_allocated
+
+        serializer = serializers.InvoicePaymentReportSerializer(invoices, many=True)
+       
+        customer = Customer.objects.filter(alias_id=customer_id).first()
+        if report_format == 'json':
+            return Response(serializer.data)
+        else:
+            # For HTML, Excel, PDF - we'll handle in the frontend
+            return Response({
+                'data': serializer.data,
+                'customer': invoices[0].customer.name if invoices else '',
+                'start_date': start_date,
+                'end_date': end_date
+            })

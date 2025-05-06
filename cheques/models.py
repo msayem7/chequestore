@@ -199,7 +199,7 @@ class CustomerClaim(models.Model):
 
 class InvoiceClaimMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT)  # Fixed
+    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT, related_name='claim_allocations')  # Fixed
     customer_claim = models.ForeignKey(CustomerClaim, on_delete=models.PROTECT,  blank=False, null=False, related_name='invoice_claim')
     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
     adjusted_date = models.DateField(default=timezone.now)

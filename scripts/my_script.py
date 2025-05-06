@@ -9,9 +9,10 @@ def run():
     # Your ORM logic here
     branch_alias_id = '05f11f8870'
     branch = Branch.objects.get(alias_id=branch_alias_id)
-    customers = Customer.objects.filter(is_parent=False, branch=branch).prefetch_related('parent')
-
     cutoff_date = date(2025, 12, 31)
+
+    customers = Customer.objects.filter(is_parent=False, branch=branch).prefetch_related('parent')
+    print customers.query
     
     parent_net_sales = Customer.objects.filter(
         branch=branch,
@@ -67,7 +68,7 @@ def run():
         ).values('customer__parent__alias_id', 'customer__parent__name')
         .annotate(Due=Sum(F('sales_amount') - F('sales_return')))
     )
-    print("Net Sales SQL:", net_sales.query)
+    
     # 3. Get cash/cheque received per parent (only honored cheques)
     cash_received = (
         ChequeStore.objects.filter(

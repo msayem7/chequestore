@@ -63,17 +63,20 @@ class CustomerSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     parent_name = serializers.CharField(source='parent.name', read_only=True)
-    
+ 
+
     is_active = serializers.BooleanField(
         required=False,  # Make field optional in requests
         default=True     # Set default for serializer validation
     )
+    
     class Meta:
         model = Customer
         fields = ['alias_id', 'branch','name', 'is_parent', 'parent'
                   , 'parent_name','grace_days', 'address', 'phone','is_active', 'created_at', 'updated_at']
         read_only_fields = ['alias_id', 'created_at', 'updated_at']
-        
+    
+    
         # extra_kwargs = {
         #     'parent': {'required': False}
         # }
@@ -426,3 +429,47 @@ class ParentDueReportSerializer(serializers.Serializer):
     received = serializers.DecimalField(max_digits=18, decimal_places=4)
     due = serializers.DecimalField(max_digits=18, decimal_places=4)
 
+class InvoicePaymentReportSerializer(serializers.Serializer):
+    invoice_no = serializers.CharField()
+    transaction_date = serializers.DateField()
+    customer = serializers.CharField()
+    sales_amount = serializers.DecimalField(max_digits=18, decimal_places=4)
+    sales_return = serializers.DecimalField(max_digits=18, decimal_places=4)
+    net_sales = serializers.SerializerMethodField()
+    total_allocated = serializers.DecimalField(max_digits=18, decimal_places=4)
+    due_amount = serializers.DecimalField(max_digits=18, decimal_places=4)
+    
+    # Cheque information
+    cheques = serializers.SerializerMethodField()
+    # Claim information
+    claims = serializers.SerializerMethodField()
+
+    def get_net_sales(self, obj):
+        return obj.sales_amount - obj.sales_return
+    
+    def get_cheques(self, obj):
+        cheque_maps = InvoiceChequeMap.objects.filter(credit_invoice=obj).order_by('cheque_store__customer_payment__received_date')        
+        return [
+            {
+                'received_date': map.cheque_store.customer_payment.received_date,
+                'receipt_no': map.cheque_store.receipt_no,
+                'instrument_type': map.cheque_store.get_instrument_type_display(),
+                'adjusted_amount': map.adjusted_amount,
+                'cheque_amount': map.cheque_store.cheque_amount,
+                'cheque_status': map.cheque_store.get_cheque_status_display()
+            }
+            for map in cheque_maps
+        ]
+
+    def get_claims(self, obj):
+        claim_maps = InvoiceClaimMap.objects.filter(credit_invoice=obj).order_by('customer_claim__customer_payment__received_date')
+        return [
+            {
+                'received_date': map.customer_claim.customer_payment.received_date,
+                'claim_no': map.customer_claim.claim_no,
+                'claim_name': map.customer_claim.claim.claim_name,
+                'adjusted_amount': map.adjusted_amount,
+                'claim_amount': map.customer_claim.claim_amount
+            }
+            for map in claim_maps
+        ]
