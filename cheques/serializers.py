@@ -473,3 +473,34 @@ class InvoicePaymentReportSerializer(serializers.Serializer):
             }
             for map in claim_maps
         ]
+    
+
+    
+#     # Report for Customer Payment
+# class CustomerInvoiceSerializer(serializers.ModelSerializer):    
+#     credit_invoice = CreditInvoiceSerializer()
+#     invoice_claim_map = InvoiceClaimMap(many=True, required=False)
+#     invoice_cheque_map = InvoiceChequeMapSerializer(many=True, required=False)
+
+#     customer_name = serializers.CharField(source='customer.name', read_only=True)
+#     transaction_date = serializers.DateField(read_only=True)
+#     sales_amount = serializers.DecimalField(max_digits=18, decimal_places=4, read_only=True)
+#     sales_return = serializers.DecimalField(max_digits=18, decimal_places=4, read_only=True)
+#     net_sales = serializers.SerializerMethodField()
+    
+#     class Meta:
+#         model = CreditInvoice
+#         fields = ['alias_id', 'customer', 'customer_name', 'transaction_date', 'sales_amount', 'sales_return', 'net_sales']
+#         read_only_fields = ['alias_id']
+
+#     def get_net_sales(self, obj):
+#         return obj.sales_amount - obj.sales_return
+
+
+# class PaymentReportSerializer(serializers.Serializer):
+#     Customer= CustomerSerializer()
+#     CustomerInvoice= CreditInvoiceSerializer()
+#     CustomerClaim= CustomerClaimSerializer()
+#     Customercheque= ChequeStoreSerializer()
+
+

@@ -110,7 +110,7 @@ class MasterClaim(models.Model):
     updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
     version = models.IntegerField(default=1)
     class Meta:
-        db_table = 'Master_Claim'
+        db_table = 'master_claim'
         verbose_name = 'Master Claim'
         verbose_name_plural = 'Master Claims'
 
