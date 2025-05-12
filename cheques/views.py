@@ -10,7 +10,7 @@ from decimal import Decimal
 # Django Imports
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import (
     F, Sum,Value, DecimalField, ExpressionWrapper, DurationField, DateField,
     Subquery, OuterRef, Q, Case, When
@@ -756,13 +756,42 @@ class ParentDueReportView(APIView):
         
         return results
 
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-# from django.db.models import Sum, Q
-# from .models import CreditInvoice
-# from .serializers import InvoicePaymentReportSerializer
-# from datetime import datetime
+# Customer Hierarchy wise due reports
+   
+
+@api_view(['GET'])
+def parent_customer_due_report(request):
+    try:
+
+        branch_alias = request.query_params.get('branch_id')
+        end_date = request.query_params.get('end_date', '2023-12-31')
+        
+        if not branch_alias:
+            return Response({"error": "Branch parameter is required"}, status=400)
+
+        branch = Branch.objects.get(alias_id=branch_alias)      
+        
+        # with connection.cursor() as cursor:
+        #     cursor.callproc('get_parent_customer_due', [branch_id, end_date])
+            # rows = cursor.fetchall()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM get_parent_customer_due(%s, %s)",
+                [branch.id, end_date]
+            )
+            columns = [col[0] for col in cursor.description]
+            data = [
+                dict(zip(columns, row))
+                for row in cursor.fetchall()
+            ]
+           
+        return Response(data)
+    
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+
 
 class InvoicePaymentReportView(APIView):
     def get(self, request):

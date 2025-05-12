@@ -189,6 +189,7 @@ class CustomerClaim(models.Model):
     customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
     details = models.TextField( blank=True, null=True)
     claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
+    
     class Meta:
         db_table = 'customer_claim'
         verbose_name = 'Customer Claim'

@@ -7,15 +7,19 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.conf import settings
 from django.conf.urls.static import static
 from cheques.views import CustomTokenObtainPairView, user_detail, \
-    unallocated_payments,ParentDueReportView,InvoicePaymentReportView #, CIvsChequeReportView
+    unallocated_payments,ParentDueReportView,InvoicePaymentReportView,\
+    parent_customer_due_report
+ #, CIvsChequeReportView
 # from cheques.views import frontend_config
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('v1/chq/', include('cheques.urls')),
+    path('v1/chq/parent-customer-due/', parent_customer_due_report, name='parent-customer-due'),
     path('v1/chq/unallocated-payments/', unallocated_payments, name='unallocated-payments'),
     path('v1/chq/ParentDueReportView/', ParentDueReportView.as_view(), name='parent-due-report'),
     path('v1/chq/reports/invoice-payments/', InvoicePaymentReportView.as_view(), name='invoice-payment-report'),
+    path('v1/chq/', include('cheques.urls')),
+    
     # path('v1/chq/reports/ci-vs-cheque/', CIvsChequeReportView.as_view({'get': 'list'}), name='ci-cheque-report'),
     # path('v1/chq/reports/ci-vs-cheque/export_pdf/', CIvsChequeReportView.as_view(actions={'get': 'export_pdf'}), name='ci-cheque-report-pdf'),
     # path('v1/chq/reports/ci-vs-cheque/export_excel/', CIvsChequeReportView.as_view(actions={'get': 'export_excel'}), name='ci-cheque-report-excel'),

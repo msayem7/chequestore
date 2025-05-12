@@ -429,6 +429,19 @@ class ParentDueReportSerializer(serializers.Serializer):
     received = serializers.DecimalField(max_digits=18, decimal_places=4)
     due = serializers.DecimalField(max_digits=18, decimal_places=4)
 
+# hierarchy wise custoer due report
+
+# class CustomerDueSerializer(serializers.Serializer):
+#     alias_id = serializers.CharField(max_length=10)
+#     parent_name = serializers.CharField(max_length=100)
+#     matured_net_sales = serializers.DecimalField(max_digits=18, decimal_places=4)
+#     immatured_net_sales = serializers.DecimalField(max_digits=18, decimal_places=4)
+#     cash = serializers.DecimalField(max_digits=18, decimal_places=4)
+#     claim = serializers.DecimalField(max_digits=18, decimal_places=4)
+#     due = serializers.DecimalField(max_digits=18, decimal_places=4)
+#     customerwise_breakdown = serializers.JSONField()
+ 
+
 class InvoicePaymentReportSerializer(serializers.Serializer):
     invoice_no = serializers.CharField()
     transaction_date = serializers.DateField()
