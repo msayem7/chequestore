@@ -99,6 +99,79 @@ class CreditInvoice(models.Model):
         return f"{self.invoice_no} - {self.customer.name} - {self.sales_amount}"
         # return self.invoice_no +' - ' + self.customer.name +' - '+ str(self.sales_amount)
 
+
+# Payment related changes
+# class TestData(models.Model):
+#     tab_test = models.TextField(blank=True, null=True)
+
+class PaymentInstrumentType(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+    serial_no = models.IntegerField(unique=False, null=False)
+    type_name = models.TextField(blank=False, null=False) #name should be branch wise unique
+    is_cash_equivalent= models.BooleanField(default=False) #True if it is cash equivalent
+    prefix = models.CharField(max_length=2, null = False, blank=True)  # 2-character prefix -optional
+    last_number = models.PositiveIntegerField(default=1)  # Last sequential number
+    auto_number = models.BooleanField(default=False) #True if it is auto generated
+    class Meta:
+        db_table = 'payment_instrument_type'
+        verbose_name = 'Payment Instrument Type'
+        verbose_name_plural = 'Payment Instrument types'
+
+    def __str__(self):
+        return str(self.type_name)
+
+class PaymentInstrument(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+    serial_no = models.IntegerField( unique=False, null=False)
+    instrument_type = models.ForeignKey(PaymentInstrumentType,on_delete=models.PROTECT,blank=False, null=False, related_name="payment_type") #name should be branch wise unique
+    instrument_name = models.TextField(blank=False, null=False) #name should be branch wise unique
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
+    version = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'payment_instrument'
+        verbose_name = 'Payment Instrument'
+        verbose_name_plural = 'Payment Instruments'
+
+    def __str__(self):
+        return str(self.instrument_name)
+
+class Payment(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
+    received_date = models.DateField(blank=False, null=False)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
+    version = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'payment'
+        verbose_name = 'Payment'
+        verbose_name_plural = 'Payments'
+
+    def __str__(self):
+        return f"{self.received_date} - {self.customer.name}"
+    
+class PaymentDetails(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    payment = models.ForeignKey(Payment, on_delete=models.PROTECT, blank=False, null=False)   
+    payment_instrument = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE , blank=False, null=False) 
+    detail= models.TextField(blank=True,null=True, default='')
+    amount = models.DecimalField(max_digits=18, decimal_places=4)
+    is_allocated = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'payment_details'
+        verbose_name = 'Payment Details'
+        verbose_name_plural = 'Payments_Details'
+
+    def __str__(self):
+        return f"{self.payment_instrument} - {self.detail}"
+
+
 class MasterClaim(models.Model):  
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)

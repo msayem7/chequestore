@@ -2,6 +2,8 @@ from django.db import models, transaction
 from rest_framework import serializers
 from .models import (Branch, ChequeStore, InvoiceChequeMap, 
                      Customer, CreditInvoice, MasterClaim, CustomerClaim, CustomerPayment, InvoiceClaimMap)
+from .models import Payment, PaymentDetails, Customer, Branch, PaymentInstrument, PaymentInstrumentType
+
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.utils import timezone
 from decimal import Decimal
@@ -132,7 +134,120 @@ class InvoiceChequeMapSerializer(serializers.ModelSerializer):
         model = InvoiceChequeMap
         fields = '__all__'
 
+#  implement payment
 
+# class PaymentInstrumentTypeSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = PaymentInstrumentType
+#         fields = ['id', 'name', 'is_cash_equivalent']
+#         read_only_fields = ['id']
+
+class PaymentInstrumentSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model = PaymentInstrument
+        fields = ['id', 'branch', 'serial_no','instrument_type','instrument_name', 'is_active','version']
+        read_only_fields = ['version']
+
+class PaymentDetailsSerializer(serializers.ModelSerializer):
+    payment_instrument = serializers.PrimaryKeyRelatedField(
+        queryset=PaymentInstrument.objects.all()
+    )    
+
+    instrument_type = serializers.IntegerField(
+        source='payment_instrument.instrument_type.id',
+        read_only=True
+    )
+
+    instrument_name = serializers.CharField(
+        source='payment_instrument.instrument_name',
+        read_only=True
+    )
+
+    class Meta:
+        model = PaymentDetails
+        fields = [
+            'payment_instrument','instrument_type', 'instrument_name', 'detail', 'amount', 'is_allocated'
+        ]
+        read_only_fields = ['is_allocated']
+
+class PaymentSerializer(serializers.ModelSerializer):
+    branch = serializers.SlugRelatedField(
+        slug_field='alias_id',
+        queryset=Branch.objects.all()
+    )
+    customer = serializers.SlugRelatedField(
+        slug_field='alias_id',
+        queryset=Customer.objects.filter(is_parent=True)
+    )
+    cash_equivalent = serializers.SerializerMethodField(
+        required=False,
+        allow_null=True
+    )
+    non_cash = serializers.SerializerMethodField(
+        required=False,
+        allow_null=True
+    )
+
+    payment_details = PaymentDetailsSerializer(many=True, source='paymentdetails_set')  # Changed to use reverse relation
+    
+
+    class Meta:
+        model = Payment
+        fields = [
+            'alias_id', 'branch', 'customer', 'received_date', 'cash_equivalent', 'non_cash',
+            'payment_details','version'
+        ]
+        read_only_fields = ['alias_id', 'version']
+
+    def get_cash_equivalent(self, obj):
+        return obj.paymentdetails_set.filter(
+            payment_instrument__instrument_type=1
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
+    # def get_cash_equivalent(self, obj):
+    #     # Sum amounts where payment instrument is cash equivalent
+    #     result = obj.paymentdetails_set.filter(
+    #         payment_instrument__instrument_type__is_cash_equialent=True
+    #     ).aggregate(total=Sum('amount'))['total']
+
+        # return result if result is not None else Decimal('0.0000')
+    
+    def get_non_cash(self, obj):
+        return obj.paymentdetails_set.exclude(
+            payment_instrument__instrument_type=1
+        ).aggregate(total=models.Sum('amount'))['total'] or 0
+    # def get_non_cash(self, obj):
+    #     # Sum amounts where payment instrument is cash equivalent
+    #     result = obj.paymentdetails_set.filter(
+    #         payment_instrument__instrument_type__is_cash_equialent=False
+    #     ).aggregate(total=Sum('amount'))['total']
+        
+    #     return result if result is not None else Decimal('0.0000')
+
+    
+    def validate_customer(self, value):
+        if not value.is_parent:
+            raise serializers.ValidationError("Only parent customers allowed.")
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        payment_details_data = validated_data.pop('paymentdetails_set')
+        validated_data['updated_by'] = self.context['request'].user
+        payment = Payment.objects.create(**validated_data)
+
+        # Create payment details - FIXED SYNTAX
+        for detail_data in payment_details_data:
+            PaymentDetails.objects.create(
+                payment=payment,
+                branch=payment.branch,  # Added comma here
+                # updated_by=self.context['request'].user,  # Added missing field
+                **detail_data
+            )
+        return payment
+
+
+#  implement payment
 class MasterClaimSerializer(serializers.ModelSerializer):
     
     branch = serializers.SlugRelatedField(
@@ -515,5 +630,4 @@ class InvoicePaymentReportSerializer(serializers.Serializer):
 #     CustomerInvoice= CreditInvoiceSerializer()
 #     CustomerClaim= CustomerClaimSerializer()
 #     Customercheque= ChequeStoreSerializer()
-
 

@@ -1,5 +1,3 @@
-
-
 # --------------------Organized Imports--------------------
 # Standard Library Imports
 import io
@@ -44,6 +42,7 @@ from .models import (
     Branch, Customer, CreditInvoice, CustomerPayment, ChequeStore,
     CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
 )
+from .models import PaymentInstrument, Payment, PaymentDetails
 
 from cheques import serializers
 from .serializers import ( # You'll need to create these serializers
@@ -51,6 +50,7 @@ from .serializers import ( # You'll need to create these serializers
     CustomerPaymentSerializer, ChequeStoreSerializer, CustomerClaimSerializer,
     InvoiceChequeMapSerializer, MasterClaimSerializer
 )
+from .serializers import PaymentInstrumentSerializer, PaymentSerializer, PaymentDetailsSerializer
 
 
 @api_view(['GET'])
@@ -247,6 +247,97 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
             response.headers['Last-Modified'] = latest.updated_at.strftime('%a, %d %b %Y %H:%M:%S GMT')
         return response
 
+# payment implemente here 
+
+class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
+    queryset = PaymentInstrument.objects.all()
+    serializer_class = PaymentInstrumentSerializer
+    # Remove filterset_fields since we'll handle filtering manually
+    # filterset_fields= ['branch', 'is_active']
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        branch_id = self.request.query_params.get('branch')
+        is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
+        
+        queryset = queryset.filter(is_active=is_active)
+
+        if branch_id:
+            # Use alias_id directly in the filter
+            queryset = queryset.filter(branch__alias_id=branch_id)
+            
+        return queryset.order_by('serial_no')
+    
+# class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
+#     queryset = PaymentInstrument.objects.all()
+#     serializer_class = PaymentInstrumentSerializer
+#     filterset_fields= ['branch', 'is_active']
+#     def get_queryset(self):
+#         queryset = super().get_queryset()
+#         branch_id = self.request.query_params.get('branch')
+#         print ('branch_id:', branch_id)
+#         # is_active = self.request.query_params.get('is_fully_allocated')
+
+#         queryset = queryset.filter(is_active=True)
+
+#         if branch_id:
+#             queryset = queryset.filter(branch__alias_id=branch_id)
+
+#         print (queryset.query)
+
+#         return queryset.order_by('serial_no')
+    
+
+# class PaymentViewSet(viewsets.ModelViewSet):
+#     queryset = Payment.objects.all()
+#     serializer_class = PaymentSerializer
+#     lookup_field = 'alias_id'  # Use alias_id instead of PK
+
+# In views.py - update PaymentViewSet
+class PaymentViewSet(viewsets.ModelViewSet):
+    queryset = Payment.objects.all()
+    serializer_class = PaymentSerializer
+    lookup_field = 'alias_id'
+    # filterset_fields = ['customer', 'received_date']
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        branch_id = self.request.query_params.get('branch')
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        customer_id = self.request.query_params.get('customer')
+        is_fully_allocated = self.request.query_params.get('is_fully_allocated')
+        
+    
+        if branch_id:
+            queryset = queryset.filter(branch__alias_id=branch_id)
+            
+        if date_from:
+            queryset = queryset.filter(received_date__gte=date_from)
+            
+        if date_to:
+            queryset = queryset.filter(received_date__lte=date_to)
+            
+        if customer_id:
+            queryset = queryset.filter(customer__alias_id=customer_id)
+            
+        # Annotate with payment totals
+        # queryset = queryset.annotate(
+        #     total_payment=Sum('paymentdetails__amount')
+            
+        # )
+        
+        # Filter by allocation status if provided
+        if is_fully_allocated and is_fully_allocated.lower() != 'all':
+            if is_fully_allocated.lower() == 'yes':
+                queryset = queryset.filter(paymentdetails__is_allocated=True).distinct()
+            elif is_fully_allocated.lower() == 'no':
+                queryset = queryset.filter(paymentdetails__is_allocated=False).distinct()
+        
+        # print (queryset.query)
+        
+        return queryset.order_by('-received_date')
+# end of payment
 
 class MasterClaimViewSet(viewsets.ModelViewSet):
     queryset = MasterClaim.objects.select_related('branch')

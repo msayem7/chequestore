@@ -6,6 +6,8 @@ from .views import ( CustomerViewSet
                     , CustomerClaimViewSet, CustomerPaymentViewSet
                     , CustomerStatementViewSet, ParentDueReportView) # InvoiceChequeMapViewSet, ChequeStoreViewSet,
 
+from .views import PaymentInstrumentsViewSet, PaymentViewSet
+
 
 router = DefaultRouter()
 router.register(r'customers', CustomerViewSet)
@@ -18,7 +20,8 @@ router.register(r'master-claims', MasterClaimViewSet)
 router.register(r'customer-claims', CustomerClaimViewSet)
 router.register(r'customer-payments', CustomerPaymentViewSet)
 router.register(r'customer-statement', CustomerStatementViewSet, basename='customer-statement')
-
+router.register(r'payment-instruments', PaymentInstrumentsViewSet, basename='payment-instruments')
+router.register(r'payments', PaymentViewSet, basename='payment')
 
 # 
 
