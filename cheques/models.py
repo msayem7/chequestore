@@ -76,7 +76,7 @@ class Customer(models.Model):
 class CreditInvoice(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    invoice_no = models.TextField(blank=False, null=False)
+    grn = models.TextField(blank=True, null=True)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
     transaction_date = models.DateField(blank=False, null=False)
     delivery_man = models.TextField(blank=True, null=True)
@@ -96,8 +96,8 @@ class CreditInvoice(models.Model):
         verbose_name_plural = 'Credit Invoices'
 
     def __str__(self):
-        return f"{self.invoice_no} - {self.customer.name} - {self.sales_amount}"
-        # return self.invoice_no +' - ' + self.customer.name +' - '+ str(self.sales_amount)
+        grn_display = self.grn or ''
+        return f"{self.customer.name} - {self.sales_amount} -{self.grn}"
 
 
 # Payment related changes
@@ -276,7 +276,8 @@ class CustomerClaim(models.Model):
         verbose_name_plural = 'Customer Claims'
 
     def __str__(self):
-        return str(self.creditinvoice.invoice_no + " : " + self.claim.claim_name + " : " + str(self.claim_amount))
+        grn_display = self.creditinvoice.grn or ''
+        return f"{self.claim.claim_name} - {self.claim_amount} - {grn_display}"
 
 class InvoiceClaimMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)

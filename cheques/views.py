@@ -546,7 +546,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
             ).values(
                 'transaction_date',
                 'payment_date',
-                'invoice_no',
+                'grn',
                 'transaction_details',
                 'sales_amount',
                 'sales_return',
@@ -618,7 +618,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
                     payment_date = payment_date.date()
                 
                 particular = (
-                    f"Invoice No: {sale['invoice_no']}, "
+                    f"Invoice No: {sale['grn']}, "
                     f"Sales Date: {transaction_date.strftime('%Y-%m-%d')}, "
                     f"Due Date: {payment_date.strftime('%Y-%m-%d')}, "
                     f"Grace Days: {sale['payment_grace_days']}, "

@@ -104,7 +104,7 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CreditInvoice
-        fields = ('alias_id', 'branch', 'invoice_no', 'customer','customer_name', 'transaction_date'
+        fields = ('alias_id', 'branch', 'grn', 'customer','customer_name', 'transaction_date'
                   ,'sales_amount','sales_return', 'allocated','net_due' ,'payment_grace_days', 'status', 'claims','version'
                   )
         read_only_fields = ('alias_id', 'version') #, 'updated_at', 'updated_by'
@@ -645,7 +645,7 @@ from .models import InvoiceChequeMap, InvoiceClaimMap, CustomerClaim, CreditInvo
 from rest_framework import serializers
 
 class InvoicePaymentReportSerializer(serializers.Serializer):
-    invoice_no = serializers.CharField()
+    grn = serializers.CharField()
     transaction_date = serializers.DateField()
     customer = serializers.CharField()
     sales_amount = serializers.DecimalField(max_digits=18, decimal_places=4)
