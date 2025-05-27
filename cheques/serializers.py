@@ -139,7 +139,7 @@ class InvoiceChequeMapSerializer(serializers.ModelSerializer):
 class PaymentInstrumentTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentInstrumentType
-        fields = ['id', 'name', 'is_cash_equivalent']
+        fields = ['id','serial_no', 'type_name', 'is_cash_equivalent', 'prefix', 'last_number', 'auto_number' ]
         read_only_fields = ['id']
 
 class PaymentInstrumentSerializer(serializers.ModelSerializer):
@@ -252,41 +252,6 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Only parent customers allowed.")
         return value
         
-    # def create(self, validated_data):
-    #     payment_details_data = validated_data.pop('paymentdetails_set')
-    #     payment = super().create(validated_data)
-
-    #     for detail_data in payment_details_data:
-    #         payment_instrument = detail_data['payment_instrument']
-    #         instrument_type = payment_instrument.instrument_type
-
-    #         # Handle auto-number generation
-    #         if instrument_type.auto_number:
-    #             with transaction.atomic():
-    #                 locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument_type.id)
-    #                 locked_type.last_number += 1
-    #                 detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
-    #                 locked_type.save()
-    #         else:
-    #              if not detail_data.get('id_number'):
-    #                 raise serializers.ValidationError(
-    #                     {"id_number": "ID number is required for manual entry instruments."}
-    #                 )
-
-    #         # Set branch from the payment's branch
-    #         PaymentDetails.objects.create(
-    #             payment=payment,
-    #             branch=payment.branch,
-    #             **detail_data
-    #         )
-
-    #     return payment
-        
-    
-    # def validate_customer(self, value):
-    #     if not value.is_parent:
-    #         raise serializers.ValidationError("Only parent customers allowed.")
-    #     return value
 
 class PaymentViewSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(
