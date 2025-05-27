@@ -134,13 +134,13 @@ class InvoiceChequeMapSerializer(serializers.ModelSerializer):
         model = InvoiceChequeMap
         fields = '__all__'
 
-#  implement payment
+#  ---------------------implementing payment-----------------------
 
-# class PaymentInstrumentTypeSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = PaymentInstrumentType
-#         fields = ['id', 'name', 'is_cash_equivalent']
-#         read_only_fields = ['id']
+class PaymentInstrumentTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaymentInstrumentType
+        fields = ['id', 'name', 'is_cash_equivalent']
+        read_only_fields = ['id']
 
 class PaymentInstrumentSerializer(serializers.ModelSerializer):
     
@@ -164,14 +164,131 @@ class PaymentDetailsSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    id_number = serializers.CharField(  # Add explicit declaration
+        max_length=10, 
+        required=False, 
+        allow_null=True, 
+        allow_blank=True
+    )
+
     class Meta:
         model = PaymentDetails
         fields = [
-            'payment_instrument','instrument_type', 'instrument_name', 'detail', 'amount', 'is_allocated'
+            'id_number', 'payment_instrument', 'instrument_type', 
+            'instrument_name', 'detail', 'amount', 'is_allocated'
         ]
-        read_only_fields = ['is_allocated']
+        read_only_fields = ['is_allocated', 'instrument_type', 'instrument_name']
+        optional_fields = ['id_number', 'detail']
+    
+    def validate(self, attrs):
+        payment_instrument = attrs.get('payment_instrument')
+        if not payment_instrument:
+            raise serializers.ValidationError({"payment_instrument": "This field is required."})
+        
+        instrument_type = payment_instrument.instrument_type
+        if not instrument_type.auto_number and not attrs.get('id_number'):
+            raise serializers.ValidationError(
+                {"id_number": "ID number is required for manual entry instruments."}
+            )
+        return attrs
 
-class PaymentSerializer(serializers.ModelSerializer):
+class PaymentCreateSerializer(serializers.ModelSerializer):
+    branch = serializers.SlugRelatedField(
+        slug_field='alias_id',
+        queryset=Branch.objects.all()
+    )
+    customer = serializers.SlugRelatedField(
+        slug_field='alias_id',
+        queryset=Customer.objects.filter(is_parent=True)
+    )
+    payment_details = PaymentDetailsSerializer(many=True, source='paymentdetails_set')
+    
+    class Meta:
+        model = Payment
+        fields = ['alias_id', 'branch', 'customer', 'received_date', 'payment_details', 'version']
+        read_only_fields = ['alias_id', 'version']
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            payment_details_data = validated_data.pop('paymentdetails_set')
+            payment = super().create(validated_data)
+            errors = {}
+
+            for index, detail_data in enumerate(payment_details_data):
+                payment_instrument = detail_data['payment_instrument']
+                instrument_type = payment_instrument.instrument_type
+
+                if instrument_type.auto_number:
+                    # Auto-number generation
+                    locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument_type.id)
+                    locked_type.last_number += 1
+                    detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
+                    locked_type.save()
+                else:
+                    # Check uniqueness
+                    if PaymentDetails.objects.filter(
+                        branch=payment.branch, 
+                        id_number=detail_data.get('id_number')
+                    ).exists():
+                        errors[f'payment_details.{index}.id_number'] = [
+                            "This ID number already exists in this branch."
+                        ]
+
+            if errors:
+                raise serializers.ValidationError(errors)
+
+            # Create payment details if no errors
+            for detail_data in payment_details_data:
+                PaymentDetails.objects.create(
+                    payment=payment,
+                    branch=payment.branch,
+                    **detail_data
+                )
+
+            return payment
+        
+    def validate_customer(self, value):
+        if not value.is_parent:
+            raise serializers.ValidationError("Only parent customers allowed.")
+        return value
+        
+    # def create(self, validated_data):
+    #     payment_details_data = validated_data.pop('paymentdetails_set')
+    #     payment = super().create(validated_data)
+
+    #     for detail_data in payment_details_data:
+    #         payment_instrument = detail_data['payment_instrument']
+    #         instrument_type = payment_instrument.instrument_type
+
+    #         # Handle auto-number generation
+    #         if instrument_type.auto_number:
+    #             with transaction.atomic():
+    #                 locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument_type.id)
+    #                 locked_type.last_number += 1
+    #                 detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
+    #                 locked_type.save()
+    #         else:
+    #              if not detail_data.get('id_number'):
+    #                 raise serializers.ValidationError(
+    #                     {"id_number": "ID number is required for manual entry instruments."}
+    #                 )
+
+    #         # Set branch from the payment's branch
+    #         PaymentDetails.objects.create(
+    #             payment=payment,
+    #             branch=payment.branch,
+    #             **detail_data
+    #         )
+
+    #     return payment
+        
+    
+    # def validate_customer(self, value):
+    #     if not value.is_parent:
+    #         raise serializers.ValidationError("Only parent customers allowed.")
+    #     return value
+
+class PaymentViewSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(
         slug_field='alias_id',
         queryset=Branch.objects.all()
@@ -204,6 +321,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         return obj.paymentdetails_set.filter(
             payment_instrument__instrument_type=1
         ).aggregate(total=models.Sum('amount'))['total'] or 0
+    
     # def get_cash_equivalent(self, obj):
     #     # Sum amounts where payment instrument is cash equivalent
     #     result = obj.paymentdetails_set.filter(
@@ -247,7 +365,10 @@ class PaymentSerializer(serializers.ModelSerializer):
         return payment
 
 
-#  implement payment
+#  ----------------  implemented payment -----------------
+
+
+
 class MasterClaimSerializer(serializers.ModelSerializer):
     
     branch = serializers.SlugRelatedField(
@@ -555,7 +676,8 @@ class ParentDueReportSerializer(serializers.Serializer):
 #     claim = serializers.DecimalField(max_digits=18, decimal_places=4)
 #     due = serializers.DecimalField(max_digits=18, decimal_places=4)
 #     customerwise_breakdown = serializers.JSONField()
- 
+from .models import InvoiceChequeMap, InvoiceClaimMap, CustomerClaim, CreditInvoice, ChequeStore
+from rest_framework import serializers
 
 class InvoicePaymentReportSerializer(serializers.Serializer):
     invoice_no = serializers.CharField()
@@ -601,9 +723,7 @@ class InvoicePaymentReportSerializer(serializers.Serializer):
             }
             for map in claim_maps
         ]
-    
 
-    
 #     # Report for Customer Payment
 # class CustomerInvoiceSerializer(serializers.ModelSerializer):    
 #     credit_invoice = CreditInvoiceSerializer()

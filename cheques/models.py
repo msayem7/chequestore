@@ -108,7 +108,7 @@ class PaymentInstrumentType(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     serial_no = models.IntegerField(unique=False, null=False)
     type_name = models.TextField(blank=False, null=False) #name should be branch wise unique
-    is_cash_equivalent= models.BooleanField(default=False) #True if it is cash equivalent
+    is_cash_equivalent = models.BooleanField(default=False) #True if it is cash equivalent
     prefix = models.CharField(max_length=2, null = False, blank=True)  # 2-character prefix -optional
     last_number = models.PositiveIntegerField(default=1)  # Last sequential number
     auto_number = models.BooleanField(default=False) #True if it is auto generated
@@ -157,16 +157,23 @@ class Payment(models.Model):
     
 class PaymentDetails(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    id_number = models.CharField(max_length=10, blank=False, null=True)  # Unique identifier for the payment detail
     payment = models.ForeignKey(Payment, on_delete=models.PROTECT, blank=False, null=False)   
     payment_instrument = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE , blank=False, null=False) 
     detail= models.TextField(blank=True,null=True, default='')
-    amount = models.DecimalField(max_digits=18, decimal_places=4)
+    amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)
     is_allocated = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'payment_details'
         verbose_name = 'Payment Details'
-        verbose_name_plural = 'Payments_Details'
+        verbose_name_plural = 'Payments Details'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['branch', 'id_number'],
+                name='unique_id_number'
+            )
+        ]
 
     def __str__(self):
         return f"{self.payment_instrument} - {self.detail}"

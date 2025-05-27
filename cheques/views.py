@@ -42,7 +42,7 @@ from .models import (
     Branch, Customer, CreditInvoice, CustomerPayment, ChequeStore,
     CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
 )
-from .models import PaymentInstrument, Payment, PaymentDetails
+from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType
 
 from cheques import serializers
 from .serializers import ( # You'll need to create these serializers
@@ -50,7 +50,7 @@ from .serializers import ( # You'll need to create these serializers
     CustomerPaymentSerializer, ChequeStoreSerializer, CustomerClaimSerializer,
     InvoiceChequeMapSerializer, MasterClaimSerializer
 )
-from .serializers import PaymentInstrumentSerializer, PaymentSerializer, PaymentDetailsSerializer
+from .serializers import PaymentInstrumentSerializer, PaymentViewSerializer, PaymentCreateSerializer, PaymentDetailsSerializer
 
 
 @api_view(['GET'])
@@ -296,9 +296,14 @@ class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
 # In views.py - update PaymentViewSet
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
+    serializer_class = PaymentViewSerializer
     lookup_field = 'alias_id'
     # filterset_fields = ['customer', 'received_date']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':  # If it's a POST request (Create)
+            return PaymentCreateSerializer
+        return PaymentViewSerializer  # Default to the UserReadSerializer for GET requests
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -337,7 +342,58 @@ class PaymentViewSet(viewsets.ModelViewSet):
         # print (queryset.query)
         
         return queryset.order_by('-received_date')
-# end of payment
+    
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+    
+    # @transaction.atomic
+    # def create(self, request, *args, **kwargs):
+    #     # Let the serializer handle payment_details
+    #     payment = super().create(request, *args, **kwargs)
+        
+    #     # Process auto_number for each payment detail
+    #     for detail in payment.paymentdetails_set.all():
+    #         instrument_type = detail.payment_instrument.instrument_type
+    #         if instrument_type.auto_number:
+    #             with transaction.atomic():
+    #                 locked_type = PaymentInstrumentType.objects.select_for_update().get(id=instrument_type.id)
+    #                 locked_type.last_number += 1
+    #                 detail.id_number = f"{locked_type.prefix}{locked_type.last_number:04d}"
+    #                 detail.save()
+    #                 locked_type.save()
+        
+    #     return payment
+    # @transaction.atomic
+    # def create(self, request, *args, **kwargs):
+    #     # payment_details_data = request.data.pop('payment_details', [])
+    #     payment = super().create(request, *args, **kwargs)
+        
+    #     # Process payment details with atomic transaction
+    #     for detail_data in payment_details_data:
+    #         instrument_type = PaymentInstrument.objects.get(
+    #             id=detail_data['payment_instrument']
+    #         ).instrument_type
+            
+    #         if instrument_type.auto_number:
+    #             # with transaction.atomic():
+    #                 # Lock the instrument type for update
+    #             locked_type = PaymentInstrumentType.objects.select_for_update().get(
+    #                 id=instrument_type.id
+    #             )
+    #             locked_type.last_number += 1
+    #             detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
+    #             locked_type.save()
+    #         else:
+    #             # Manual entry - already validated by serializer
+    #             pass
+            
+    #         PaymentDetails.objects.create(payment=payment, **detail_data)
+        
+    #     return payment
+    
+
+# ----------------- end of payment implementation---------------------
 
 class MasterClaimViewSet(viewsets.ModelViewSet):
     queryset = MasterClaim.objects.select_related('branch')
