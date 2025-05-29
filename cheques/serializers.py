@@ -1,8 +1,8 @@
 from django.db import models, transaction
 from rest_framework import serializers
-from .models import (Branch, ChequeStore, InvoiceChequeMap, 
-                     Customer, CreditInvoice, MasterClaim, CustomerClaim, CustomerPayment, InvoiceClaimMap)
-from .models import Payment, PaymentDetails, Customer, Branch, PaymentInstrument, PaymentInstrumentType
+from .models import (Branch, #ChequeStore, InvoiceChequeMap, 
+                     Customer, CreditInvoice,) #MasterClaim, CustomerClaim, CustomerPayment, InvoiceClaimMap)
+from .models import Payment, PaymentDetails, Customer, Branch, PaymentInstrument, PaymentInstrumentType, InvoicePaymentDetailMap
 
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.utils import timezone
@@ -83,19 +83,19 @@ class CustomerSerializer(serializers.ModelSerializer):
         #     'parent': {'required': False}
         # }
 class CreditInvoiceSerializer(serializers.ModelSerializer):
-    claims = serializers.JSONField(write_only=True, required=False)
     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
     customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all())
     payment_grace_days = serializers.IntegerField(read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
     status = serializers.BooleanField(default=True, required=False)
     
-    allocated = serializers.DecimalField(
-        max_digits=18, 
-        decimal_places=4, 
-        read_only=True,
-        source='total_allocated'
-    )
+    # allocated = serializers.DecimalField(
+    #     max_digits=18, 
+    #     decimal_places=4, 
+    #     read_only=True,
+    #     source='total_allocated'
+    # )
+    
     net_due = serializers.DecimalField(
         max_digits=18, 
         decimal_places=4, 
@@ -105,7 +105,7 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = CreditInvoice
         fields = ('alias_id', 'branch', 'grn', 'customer','customer_name', 'transaction_date'
-                  ,'sales_amount','sales_return', 'allocated','net_due' ,'payment_grace_days', 'status', 'claims','version'
+                  ,'sales_amount','sales_return', 'net_due' ,'payment_grace_days', 'status', 'version' #'allocated',
                   )
         read_only_fields = ('alias_id', 'version') #, 'updated_at', 'updated_by'
     
@@ -124,15 +124,15 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
         return instance
 
 
-class InvoiceChequeMapSerializer(serializers.ModelSerializer):
-    branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
-    credit_invoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
-    cheque_store = serializers.SlugRelatedField(slug_field='receipt_no', queryset=ChequeStore.objects.all())
-    adjusted_date = serializers.DateField(default=timezone.now)  # Include adjusted_date in serializer
+# class InvoiceChequeMapSerializer(serializers.ModelSerializer):
+#     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+#     credit_invoice = serializers.SlugRelatedField(slug_field='alias_id', queryset=CreditInvoice.objects.all())
+#     cheque_store = serializers.SlugRelatedField(slug_field='receipt_no', queryset=ChequeStore.objects.all())
+#     adjusted_date = serializers.DateField(default=timezone.now)  # Include adjusted_date in serializer
 
-    class Meta:
-        model = InvoiceChequeMap
-        fields = '__all__'
+#     class Meta:
+#         model = InvoiceChequeMap
+#         fields = '__all__'
 
 #  ---------------------implementing payment-----------------------
 
@@ -334,175 +334,175 @@ class PaymentViewSerializer(serializers.ModelSerializer):
 
 
 
-class MasterClaimSerializer(serializers.ModelSerializer):
+# class MasterClaimSerializer(serializers.ModelSerializer):
     
-    branch = serializers.SlugRelatedField(
-        slug_field='alias_id',
-        queryset=Branch.objects.all(),
-        required=True
-    )
+#     branch = serializers.SlugRelatedField(
+#         slug_field='alias_id',
+#         queryset=Branch.objects.all(),
+#         required=True
+#     )
         
-    class Meta:
-        model = MasterClaim
+#     class Meta:
+#         model = MasterClaim
 
-        fields = [
-            'alias_id', 'branch', 'claim_name', 'prefix', 'next_number', 'is_active'
-        ]
+#         fields = [
+#             'alias_id', 'branch', 'claim_name', 'prefix', 'next_number', 'is_active'
+#         ]
         # , 'updated_at', 'updated_by', 'version'
 
      
-class CustomerClaimSerializer(serializers.ModelSerializer):
-    claim = serializers.SlugRelatedField(
-        slug_field='alias_id', 
-        queryset=MasterClaim.objects.all()
-    )
+# class CustomerClaimSerializer(serializers.ModelSerializer):
+#     claim = serializers.SlugRelatedField(
+#         slug_field='alias_id', 
+#         queryset=MasterClaim.objects.all()
+#     )
 
-    class Meta:
-        model = CustomerClaim
-        fields = [
-           'claim_no', 'claim', 'claim_amount', 'details'
-        ]
+#     class Meta:
+#         model = CustomerClaim
+#         fields = [
+#            'claim_no', 'claim', 'claim_amount', 'details'
+#         ]
 
-class ChequeStoreSerializer(serializers.ModelSerializer):
-    instrument_type = serializers.IntegerField(default=2)  # Default to Cheque (2)    
-    allocated = serializers.DecimalField(
-        max_digits=18, 
-        decimal_places=4, 
-        required=False,  # Make this field optional
-        read_only=True   # Let the server calculate this
-    )
+# class ChequeStoreSerializer(serializers.ModelSerializer):
+#     instrument_type = serializers.IntegerField(default=2)  # Default to Cheque (2)    
+#     allocated = serializers.DecimalField(
+#         max_digits=18, 
+#         decimal_places=4, 
+#         required=False,  # Make this field optional
+#         read_only=True   # Let the server calculate this
+#     )
     
-    class Meta:
-        model = ChequeStore
-        fields = [
-            'receipt_no', 'cheque_date', 'cheque_detail',
-            'cheque_amount', 'allocated', 'cheque_image', 'cheque_status',
-            'instrument_type'
-        ]
+#     class Meta:
+#         model = ChequeStore
+#         fields = [
+#             'receipt_no', 'cheque_date', 'cheque_detail',
+#             'cheque_amount', 'allocated', 'cheque_image', 'cheque_status',
+#             'instrument_type'
+#         ]
 
-class CustomerPaymentSerializer(serializers.ModelSerializer):
-    branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
-    customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all(), required=True)
-    cheques = ChequeStoreSerializer(many=True, required=False)
-    claims = CustomerClaimSerializer(many=True, required=False)
-    allocations = serializers.JSONField(write_only=True, required=False)
+# class CustomerPaymentSerializer(serializers.ModelSerializer):
+#     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
+#     customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all(), required=True)
+#     cheques = ChequeStoreSerializer(many=True, required=False)
+#     claims = CustomerClaimSerializer(many=True, required=False)
+#     allocations = serializers.JSONField(write_only=True, required=False)
 
 
-    class Meta:
-        model = CustomerPayment
-        fields = (
-            'alias_id', 'branch', 'customer', 'received_date', 
-            'version', 'cheques', 'claims', 'allocations'
-        )
-        read_only_fields = ('alias_id', 'version', )
+#     class Meta:
+#         model = CustomerPayment
+#         fields = (
+#             'alias_id', 'branch', 'customer', 'received_date', 
+#             'version', 'cheques', 'claims', 'allocations'
+#         )
+#         read_only_fields = ('alias_id', 'version', )
 
-    def validate(self, data):
-        # Check cheque uniqueness within the same branch
-        branch = data['branch']
+#     def validate(self, data):
+#         # Check cheque uniqueness within the same branch
+#         branch = data['branch']
         
-        for cheque_data in data.get('cheques', []):
-            if not cheque_data.get('receipt_no'):
-                raise serializers.ValidationError("Receipt number is required for cheque instruments.")
+#         for cheque_data in data.get('cheques', []):
+#             if not cheque_data.get('receipt_no'):
+#                 raise serializers.ValidationError("Receipt number is required for cheque instruments.")
             
         
-        for claim_data in data.get('claims', []):
-            if not claim_data.get('claim_no'):
-                raise serializers.ValidationError("Claim number is required for claims.")
-            else:
-                claim_data['claim_no'] = claim_data['claim_no'].strip()
-                if not claim_data['claim_no']:
-                    raise serializers.ValidationError("Claim number is required.") 
+#         for claim_data in data.get('claims', []):
+#             if not claim_data.get('claim_no'):
+#                 raise serializers.ValidationError("Claim number is required for claims.")
+#             else:
+#                 claim_data['claim_no'] = claim_data['claim_no'].strip()
+#                 if not claim_data['claim_no']:
+#                     raise serializers.ValidationError("Claim number is required.") 
         
-        receipt_nos = [ch['receipt_no'] for ch in data.get('cheques', [])]
-        claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
-        last_claim_nos = [cl['claim_no'].strip()[-6:]  for cl in data.get('claims', [])]
+#         receipt_nos = [ch['receipt_no'] for ch in data.get('cheques', [])]
+#         claim_nos = [cl['claim_no'] for cl in data.get('claims', [])]
+#         last_claim_nos = [cl['claim_no'].strip()[-6:]  for cl in data.get('claims', [])]
 
-        #claims = data.get('claims', [])
-        # claim_nos, last_claim_nos = (
-        #     zip(*[
-        #         (cl['claim_no'], cl['claim_no'].strip()[-6:])  # Fixed tuple parentheses
-        #         for cl in claims
-        #     ]) if claims else ([], [])
-        # )
+#         #claims = data.get('claims', [])
+#         # claim_nos, last_claim_nos = (
+#         #     zip(*[
+#         #         (cl['claim_no'], cl['claim_no'].strip()[-6:])  # Fixed tuple parentheses
+#         #         for cl in claims
+#         #     ]) if claims else ([], [])
+#         # )
 
-        #claim_nos, last_claim_nos = (zip(*[(cl['claim_no'], cl['claim_no'].strip()[-6:]) for cl in claims]) if claims else ([], []))
+#         #claim_nos, last_claim_nos = (zip(*[(cl['claim_no'], cl['claim_no'].strip()[-6:]) for cl in claims]) if claims else ([], []))
         
-        # update empty values to '0' in allocations
-        for key, inner_dict in data.get('allocations', {}).items():
-            for data_type, value_dict in inner_dict.items():
-                for inner_key, value in value_dict.items():
-                    if value == '':
-                        data.get('allocations', {})[key][data_type][inner_key] = '0'
-        print(data.get('allocations', {}))
+#         # update empty values to '0' in allocations
+#         for key, inner_dict in data.get('allocations', {}).items():
+#             for data_type, value_dict in inner_dict.items():
+#                 for inner_key, value in value_dict.items():
+#                     if value == '':
+#                         data.get('allocations', {})[key][data_type][inner_key] = '0'
+#         print(data.get('allocations', {}))
 
-        # 1. Validate positive allocations
-        for invoice_id, allocation in data.get('allocations', {}).items():
-            for amount in allocation.get('cheques', {}).values():                
-                if Decimal(amount) < Decimal('0'):
-                    raise serializers.ValidationError(
-                        "Received allocations must be positive amounts"
-                    )
-            for amount in allocation.get('existing_payments', {}).values():
-                if Decimal(amount) < Decimal('0'):
-                    raise serializers.ValidationError(
-                        "Existing received allocations must be positive amounts"
-                    )
-            for amount in allocation.get('claims', {}).values():
-                if Decimal(amount) < Decimal('0'):
-                    raise serializers.ValidationError(
-                        "Claim allocations must be positive amounts"
-                    )
+#         # 1. Validate positive allocations
+#         for invoice_id, allocation in data.get('allocations', {}).items():
+#             for amount in allocation.get('cheques', {}).values():                
+#                 if Decimal(amount) < Decimal('0'):
+#                     raise serializers.ValidationError(
+#                         "Received allocations must be positive amounts"
+#                     )
+#             for amount in allocation.get('existing_payments', {}).values():
+#                 if Decimal(amount) < Decimal('0'):
+#                     raise serializers.ValidationError(
+#                         "Existing received allocations must be positive amounts"
+#                     )
+#             for amount in allocation.get('claims', {}).values():
+#                 if Decimal(amount) < Decimal('0'):
+#                     raise serializers.ValidationError(
+#                         "Claim allocations must be positive amounts"
+#                     )
         
-         # 2. Validate unique cheque/claim numbers within current order
-        if len(receipt_nos) != len(set(receipt_nos)):
-            raise serializers.ValidationError(
-                "Cheque numbers must be unique within this payment"
-            )
+#          # 2. Validate unique cheque/claim numbers within current order
+#         if len(receipt_nos) != len(set(receipt_nos)):
+#             raise serializers.ValidationError(
+#                 "Cheque numbers must be unique within this payment"
+#             )
 
-        if len(claim_nos) != len(set(claim_nos)):
-            raise serializers.ValidationError(
-                "Claim numbers must be unique within this payment"
-            )
+#         if len(claim_nos) != len(set(claim_nos)):
+#             raise serializers.ValidationError(
+#                 "Claim numbers must be unique within this payment"
+#             )
         
-         # 3. Validate branch-wide uniqueness for claims
-        claim_qs = CustomerClaim.objects.filter(
-            branch=branch,
-            claim_no__in=claim_nos
-        )          
+#          # 3. Validate branch-wide uniqueness for claims
+#         claim_qs = CustomerClaim.objects.filter(
+#             branch=branch,
+#             claim_no__in=claim_nos
+#         )          
         
-        # Exclude existing claims if updating
-        if self.instance and self.instance.pk:
-            claim_qs = claim_qs.exclude(customer_payment=self.instance)
+#         # Exclude existing claims if updating
+#         if self.instance and self.instance.pk:
+#             claim_qs = claim_qs.exclude(customer_payment=self.instance)
 
-        if claim_qs.exists():
-            existing = claim_qs.values_list('claim_no', flat=True)
-            raise serializers.ValidationError({
-                'claims': f"Claim numbers {list(existing)} already exist in this branch"
-            })
+#         if claim_qs.exists():
+#             existing = claim_qs.values_list('claim_no', flat=True)
+#             raise serializers.ValidationError({
+#                 'claims': f"Claim numbers {list(existing)} already exist in this branch"
+#             })
 
-        # # Validate branch-wide uniqueness for cheques
-        # if ChequeStore.objects.filter(
-        #     branch=branch, 
-        #     receipt_no__in=receipt_nos
-        # ).exists():
-        #     raise serializers.ValidationError("Branch wise cheque number must be unique")  
+#         # # Validate branch-wide uniqueness for cheques
+#         # if ChequeStore.objects.filter(
+#         #     branch=branch, 
+#         #     receipt_no__in=receipt_nos
+#         # ).exists():
+#         #     raise serializers.ValidationError("Branch wise cheque number must be unique")  
         
-        # Validate branch-wide uniqueness for cheques
-        cheque_qs = ChequeStore.objects.filter(
-            branch=branch,
-            receipt_no__in=receipt_nos
-        )
+#         # Validate branch-wide uniqueness for cheques
+#         cheque_qs = ChequeStore.objects.filter(
+#             branch=branch,
+#             receipt_no__in=receipt_nos
+#         )
         
 
-        if self.instance and self.instance.pk:
-            cheque_qs = cheque_qs.exclude(customer_payment=self.instance)
+#         if self.instance and self.instance.pk:
+#             cheque_qs = cheque_qs.exclude(customer_payment=self.instance)
 
-        if cheque_qs.exists():
-            existing = cheque_qs.values_list('receipt_no', flat=True)
-            raise serializers.ValidationError({
-                'receipts': f"Receipt numbers {list(existing)} already exist in this branch"
-            })
-        return data
+#         if cheque_qs.exists():
+#             existing = cheque_qs.values_list('receipt_no', flat=True)
+#             raise serializers.ValidationError({
+#                 'receipts': f"Receipt numbers {list(existing)} already exist in this branch"
+#             })
+#         return data
    
     def create(self, validated_data):
         cheques_data = validated_data.pop('cheques', [])
@@ -641,7 +641,7 @@ class ParentDueReportSerializer(serializers.Serializer):
 #     claim = serializers.DecimalField(max_digits=18, decimal_places=4)
 #     due = serializers.DecimalField(max_digits=18, decimal_places=4)
 #     customerwise_breakdown = serializers.JSONField()
-from .models import InvoiceChequeMap, InvoiceClaimMap, CustomerClaim, CreditInvoice, ChequeStore
+from .models import CreditInvoice #InvoiceChequeMap, InvoiceClaimMap, CustomerClaim,  ChequeStore
 from rest_framework import serializers
 
 class InvoicePaymentReportSerializer(serializers.Serializer):

@@ -39,16 +39,16 @@ from openpyxl import Workbook
 
 # Local Application Imports
 from .models import (
-    Branch, Customer, CreditInvoice, CustomerPayment, ChequeStore,
-    CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
+    Branch, Customer, CreditInvoice #, CustomerPayment, ChequeStore,
+    #CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
 )
-from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType
+from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType, InvoicePaymentDetailMap
 
 from cheques import serializers
 from .serializers import ( # You'll need to create these serializers
     BranchSerializer, CustomerSerializer, CreditInvoiceSerializer,
-    CustomerPaymentSerializer, ChequeStoreSerializer, CustomerClaimSerializer,
-    InvoiceChequeMapSerializer, MasterClaimSerializer
+    #CustomerPaymentSerializer,  #ChequeStoreSerializer, CustomerClaimSerializer,
+    # InvoiceChequeMapSerializer, MasterClaimSerializer
 )
 from .serializers import PaymentInstrumentSerializer, PaymentViewSerializer, PaymentCreateSerializer, PaymentDetailsSerializer
 
@@ -161,59 +161,73 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
 
-        # Subquery for cheque allocations
-        cheque_subquery = (
-            InvoiceChequeMap.objects
-            .filter(credit_invoice=OuterRef('pk'))
-            .values('credit_invoice')
-            .annotate(total=Sum('adjusted_amount'))
-            .values('total')
-        )
-
-        # Subquery for claim allocations
-        claim_subquery = (
-            InvoiceClaimMap.objects
-            .filter(credit_invoice=OuterRef('pk'))
-            .values('credit_invoice')
-            .annotate(total=Sum('adjusted_amount'))
-            .values('total')
-        )
-
-        queryset = CreditInvoice.objects.annotate(
-            cheque_allocated=Coalesce(
-                Subquery(cheque_subquery, output_field=DecimalField()),
-                Decimal('0.0')
-            ),
-            claim_allocated=Coalesce(
-                Subquery(claim_subquery, output_field=DecimalField()),
-                Decimal('0.0')
-            ),
-            total_allocated=F('cheque_allocated') + F('claim_allocated'),
-            net_due=F('sales_amount') - F('sales_return') - F('total_allocated')
-        )
+        
         params = self.request.query_params
         branch = params.get('branch')
         customer = params.get('customer')
         status = params.get('status')
         date_from = params.get('transaction_date_after')
         date_to = params.get('transaction_date_before')
+        # include_payment = params.get('include_payment', 'false').lower() 
+
+        queryset = CreditInvoice.objects.all()
+        
+        # is_include_payment = include_payment.lower() == 'true'
+        # if is_include_payment:
+            # Subquery for cheque allocations
+            # InvoicePaymentDetailMap
+            # cheque_subquery = (
+            #     InvoicePaymentDetailMap.objects
+            #     .filter(credit_invoice=OuterRef('pk'))
+            #     .values('credit_invoice')
+            #     .annotate(total_allocated=Sum('adjusted_amount'))
+            #     .values('total')
+            # )
+
+            # queryset = CreditInvoice.objects.annotate(
+            #     cheque_allocated=Coalesce(
+            #         Subquery(cheque_subquery, output_field=DecimalField()),
+            #         Decimal('0.0')
+            #     ),
+            #     claim_allocated=Coalesce(
+            #         Subquery(claim_subquery, output_field=DecimalField()),
+            #         Decimal('0.0')
+            #     ),
+            #     total_allocated=F('cheque_allocated') + F('claim_allocated'),
+            #     net_due=F('sales_amount') - F('sales_return') - F('total_allocated')
+            # )
+        
+        
 
         # Apply filters
         if branch:
             queryset = queryset.filter(branch__alias_id=branch)
-        if customer:
-            queryset = queryset.filter(customer__alias_id=customer)
-        if status:
-            is_active = status.lower() == 'true'
-            queryset = queryset.filter(status=is_active)
+        # if customer:
+        #     queryset = queryset.filter(customer__alias_id=customer)
+        # if status:
+        #     is_active = status.lower() == 'true'
+        #     queryset = queryset.filter(status=is_active)
         if date_from:
             queryset = queryset.filter(transaction_date__gte=date_from)
         if date_to:
             queryset = queryset.filter(transaction_date__lte=date_to)
 
-        # print ('queryset :', print(str(queryset.query)))
+        if customer:
+            cust = Customer.objects.filter(alias_id=customer).first()
+
+            if cust and  cust.is_parent:
+            # If customer is a parent, filter invoices for all child customers
+                child_customers = Customer.objects.filter(
+                    Q(parent_id=cust)
+                )#.values_list('alias_id', flat=True)
+
+                queryset = queryset.filter(customer__in=child_customers)
+            if cust and  cust.is_parent == False:
+                # If customer is not a parent, filter invoices for that specific customer
+                queryset = queryset.filter(customer=cust)
+        
+        # print('This queryset :', print(queryset.query))
         return queryset.order_by('transaction_date')
-     
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -239,7 +253,6 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.data)
 
-
     @method_decorator(never_cache)  # 👈 Disable caching
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -248,7 +261,6 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         return response
 
 # payment implemente here 
-PaymentInstrumentType
 
 class PaymentInstrumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = PaymentInstrumentType.objects.all()
@@ -265,7 +277,6 @@ class PaymentInstrumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
             
         return queryset.order_by('serial_no')
     
-   
     
 class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
     queryset = PaymentInstrument.objects.all()
@@ -340,127 +351,83 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
     
-    # @transaction.atomic
-    # def create(self, request, *args, **kwargs):
-    #     # Let the serializer handle payment_details
-    #     payment = super().create(request, *args, **kwargs)
-        
-    #     # Process auto_number for each payment detail
-    #     for detail in payment.paymentdetails_set.all():
-    #         instrument_type = detail.payment_instrument.instrument_type
-    #         if instrument_type.auto_number:
-    #             with transaction.atomic():
-    #                 locked_type = PaymentInstrumentType.objects.select_for_update().get(id=instrument_type.id)
-    #                 locked_type.last_number += 1
-    #                 detail.id_number = f"{locked_type.prefix}{locked_type.last_number:04d}"
-    #                 detail.save()
-    #                 locked_type.save()
-        
-    #     return payment
-    # @transaction.atomic
-    # def create(self, request, *args, **kwargs):
-    #     # payment_details_data = request.data.pop('payment_details', [])
-    #     payment = super().create(request, *args, **kwargs)
-        
-    #     # Process payment details with atomic transaction
-    #     for detail_data in payment_details_data:
-    #         instrument_type = PaymentInstrument.objects.get(
-    #             id=detail_data['payment_instrument']
-    #         ).instrument_type
-            
-    #         if instrument_type.auto_number:
-    #             # with transaction.atomic():
-    #                 # Lock the instrument type for update
-    #             locked_type = PaymentInstrumentType.objects.select_for_update().get(
-    #                 id=instrument_type.id
-    #             )
-    #             locked_type.last_number += 1
-    #             detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
-    #             locked_type.save()
-    #         else:
-    #             # Manual entry - already validated by serializer
-    #             pass
-            
-    #         PaymentDetails.objects.create(payment=payment, **detail_data)
-        
-    #     return payment
-    
+
 
 # ----------------- end of payment implementation---------------------
 
-class MasterClaimViewSet(viewsets.ModelViewSet):
-    queryset = MasterClaim.objects.select_related('branch')
-    serializer_class = serializers.MasterClaimSerializer
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'alias_id'
+# class MasterClaimViewSet(viewsets.ModelViewSet):
+#     queryset = MasterClaim.objects.select_related('branch')
+#     serializer_class = serializers.MasterClaimSerializer
+#     permission_classes = [IsAuthenticated]
+#     lookup_field = 'alias_id'
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        branch = self.request.query_params.get('branch', None)
+#     def get_queryset(self):
+#         queryset = super().get_queryset()
+#         branch = self.request.query_params.get('branch', None)
         
-        if branch:
-            queryset = queryset.filter(branch__alias_id=branch)
+#         if branch:
+#             queryset = queryset.filter(branch__alias_id=branch)
         
-        return queryset.order_by('claim_name')
+#         return queryset.order_by('claim_name')
 
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+#     @transaction.atomic
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_create(serializer)
+#         headers = self.get_success_headers(serializer.data)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    @transaction.atomic
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+#     @transaction.atomic
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_update(serializer)
+#         return Response(serializer.data)
 
-    def perform_create(self, serializer):
-        serializer.save(
-            updated_by=self.request.user,
-            version=1  # Initialize version for new entries
-        )
+#     def perform_create(self, serializer):
+#         serializer.save(
+#             updated_by=self.request.user,
+#             version=1  # Initialize version for new entries
+#         )
 
-    def perform_update(self, serializer):
-        serializer.save(
-            updated_by=self.request.user,
-            version=serializer.instance.version + 1
-        )
+#     def perform_update(self, serializer):
+#         serializer.save(
+#             updated_by=self.request.user,
+#             version=serializer.instance.version + 1
+#         )
 
-class CustomerClaimViewSet(viewsets.ModelViewSet):
-    queryset = CustomerClaim.objects.all()
-    serializer_class = serializers.CustomerClaimSerializer
-    lookup_field = 'claim_no'
+# class CustomerClaimViewSet(viewsets.ModelViewSet):
+#     queryset = CustomerClaim.objects.all()
+#     serializer_class = serializers.CustomerClaimSerializer
+#     lookup_field = 'claim_no'
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        branch = self.request.query_params.get('branch')
-        invoice = self.request.query_params.get('invoice')
-        # add filter using invoice__receipt_no
+#     def get_queryset(self):
+#         queryset = super().get_queryset()
+#         branch = self.request.query_params.get('branch')
+#         invoice = self.request.query_params.get('invoice')
+#         # add filter using invoice__receipt_no
 
-        if branch:
-            queryset = queryset.filter(branch__alias_id=branch)
-        if invoice:
-            queryset = queryset.filter(creditinvoice__alias_id=invoice)
-        return queryset
+#         if branch:
+#             queryset = queryset.filter(branch__alias_id=branch)
+#         if invoice:
+#             queryset = queryset.filter(creditinvoice__alias_id=invoice)
+#         return queryset
 
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+#     @transaction.atomic
+#     def create(self, request, *args, **kwargs):
+#         return super().create(request, *args, **kwargs)
 
     
-    @transaction.atomic
-    def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if int(request.data.get('version')) != instance.version:
-            return Response({'error': 'Version conflict'}, status=status.HTTP_409_CONFLICT)
+#     @transaction.atomic
+#     def update(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         if int(request.data.get('version')) != instance.version:
+#             return Response({'error': 'Version conflict'}, status=status.HTTP_409_CONFLICT)
         
-        return super().update(request, *args, **kwargs)
+#         return super().update(request, *args, **kwargs)
 
 @api_view(['GET'])
 def unallocated_payments(request):
@@ -484,23 +451,23 @@ def unallocated_payments(request):
     return Response(serializer.data)
 
 
-class CustomerPaymentViewSet(viewsets.ModelViewSet):
-    serializer_class = serializers.CustomerPaymentSerializer
-    queryset = CustomerPayment.objects.all()
-    lookup_field = 'alias_id'
+# class CustomerPaymentViewSet(viewsets.ModelViewSet):
+#     serializer_class = serializers.CustomerPaymentSerializer
+#     queryset = CustomerPayment.objects.all()
+#     lookup_field = 'alias_id'
 
-    def get_queryset(self):
-        return self.queryset.filter(
-            branch__alias_id=self.request.query_params.get('branch')
-        ).select_related('customer', 'branch')
+#     def get_queryset(self):
+#         return self.queryset.filter(
+#             branch__alias_id=self.request.query_params.get('branch')
+#         ).select_related('customer', 'branch')
     
-    def create(self, request, *args, **kwargs):
-        with transaction.atomic():
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+#     def create(self, request, *args, **kwargs):
+#         with transaction.atomic():
+#             serializer = self.get_serializer(data=request.data)
+#             serializer.is_valid(raise_exception=True)
+#             self.perform_create(serializer)
+#             headers = self.get_success_headers(serializer.data)
+#             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 class CustomerStatementViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]

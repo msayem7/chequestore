@@ -85,7 +85,7 @@ class CreditInvoice(models.Model):
     sales_return = models.DecimalField(max_digits=18, decimal_places=4)
     payment_grace_days = models.IntegerField(default=0)
     invoice_image = models.ImageField(upload_to='invoices/', null=True)
-    status = models.BooleanField(default=True)  # True = Net sale amount is not fully adjusted, False= Fully adjusted
+    status = models.BooleanField(default=False)  #it is Payment_status, True = got payment , False= no payment 
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     version = models.IntegerField(default=1)
@@ -143,6 +143,7 @@ class Payment(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
     received_date = models.DateField(blank=False, null=False)
+    is_allocated = models.BooleanField(default=False)  # True if payment is allocated at least once, False if not allocated
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
     version = models.IntegerField(default=1)
@@ -157,12 +158,12 @@ class Payment(models.Model):
     
 class PaymentDetails(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    id_number = models.CharField(max_length=10, blank=False, null=True)  # Unique identifier for the payment detail
+    id_number = models.CharField(max_length=10, blank=False, null=True)  # branch wise Unique identifier for the payment detail
     payment = models.ForeignKey(Payment, on_delete=models.PROTECT, blank=False, null=False)   
     payment_instrument = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE , blank=False, null=False) 
     detail= models.TextField(blank=True,null=True, default='')
     amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)
-    is_allocated = models.BooleanField(default=False)
+    # is_allocated = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'payment_details'
@@ -179,117 +180,133 @@ class PaymentDetails(models.Model):
         return f"{self.payment_instrument} - {self.detail}"
 
 
-class MasterClaim(models.Model):  
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    claim_name = models.TextField( blank=False, null=False) #name should be branch wise unique
-    prefix = models.CharField(max_length=2, null = True)  # 2-character prefix
-    next_number = models.PositiveIntegerField(default=1)  # Last sequential number
-    is_active = models.BooleanField(default=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
-    version = models.IntegerField(default=1)
-    class Meta:
-        db_table = 'master_claim'
-        verbose_name = 'Master Claim'
-        verbose_name_plural = 'Master Claims'
+# class MasterClaim(models.Model):  
+#     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+#     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+#     claim_name = models.TextField( blank=False, null=False) #name should be branch wise unique
+#     prefix = models.CharField(max_length=2, null = True)  # 2-character prefix
+#     next_number = models.PositiveIntegerField(default=1)  # Last sequential number
+#     is_active = models.BooleanField(default=True)
+#     updated_at = models.DateTimeField(auto_now=True)
+#     updated_by = models.ForeignKey(User, on_delete= models.SET_NULL, null=True)
+#     version = models.IntegerField(default=1)
+#     class Meta:
+#         db_table = 'master_claim'
+#         verbose_name = 'Master Claim'
+#         verbose_name_plural = 'Master Claims'
 
-    def __str__(self):
-        return str(self.claim_name)
+#     def __str__(self):
+#         return str(self.claim_name)
 
 
-class CustomerPayment(models.Model):
+# class CustomerPayment(models.Model):
+#     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+#     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+#     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
+#     received_date = models.DateField(blank=False, null=False)
+#     # isActive = models.BooleanField(default=True)
+#     updated_at = models.DateTimeField(auto_now=True)
+#     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
+#     version = models.IntegerField(default=1)
+
+#     class Meta:
+#         db_table = 'customer_payment'
+#         verbose_name = 'Customer Payment'
+#         verbose_name_plural = 'Customer Payments'
+
+#     def __str__(self):
+#         return f"{self.received_date} - {self.customer.name}"
+
+# class ChequeStore(models.Model):   
+#     class ChequeStatus(models.IntegerChoices):
+#         RECEIVED = 1, 'Received'
+#         DEPOSITED = 2, 'Deposited'
+#         HONORED = 3, 'Honored'
+#         BOUNCED = 4, 'Bounced' 
+#     class instrument_type(models.IntegerChoices):
+#         CASH = 1, 'Cash'
+#         CHEQUE = 2, 'Cheque'
+#         PO = 3, 'Pay Order'
+#         EFT = 4, 'EFT'
+#         RTGS = 5, 'RTGS'
+#     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+#     instrument_type = models.IntegerField(choices=instrument_type.choices, default=instrument_type.CHEQUE)
+#     receipt_no = models.TextField( max_length=10)
+#     customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=False)
+#     cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
+#     cheque_date = models.DateField(null=True, blank=True)
+#     cheque_amount = models.DecimalField(max_digits=18, decimal_places=4)
+#     cheque_detail = models.TextField(null=False, blank=True, default='')
+#     cheque_status = models.IntegerField(choices=ChequeStatus.choices, default=ChequeStatus.RECEIVED)
+
+#     class Meta:
+#         db_table = 'cheque_store'
+#         verbose_name = 'Cheque Store'
+#         verbose_name_plural = 'Cheque Stores'
+
+#     def __str__(self):
+#         return self.receipt_no
+
+class InvoicePaymentDetailMap(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
-    received_date = models.DateField(blank=False, null=False)
-    # isActive = models.BooleanField(default=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
-    version = models.IntegerField(default=1)
+    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='payment_allocations')  # Fixed
+    payment_detail = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, related_name='invoice_payments')
+    allocated_amount = models.DecimalField(max_digits=18, decimal_places=4)
 
     class Meta:
-        db_table = 'customer_payment'
-        verbose_name = 'Customer Payment'
-        verbose_name_plural = 'Customer Payments'
+        db_table = 'invoice_payment_detail_map'
+        verbose_name = 'Invoice Payment Detail Map'
+        verbose_name_plural = 'Invoice Payment Detail Maps'
 
     def __str__(self):
-        return f"{self.received_date} - {self.customer.name}"
-
-class ChequeStore(models.Model):   
-    class ChequeStatus(models.IntegerChoices):
-        RECEIVED = 1, 'Received'
-        DEPOSITED = 2, 'Deposited'
-        HONORED = 3, 'Honored'
-        BOUNCED = 4, 'Bounced' 
-    class instrument_type(models.IntegerChoices):
-        CASH = 1, 'Cash'
-        CHEQUE = 2, 'Cheque'
-        PO = 3, 'Pay Order'
-        EFT = 4, 'EFT'
-        RTGS = 5, 'RTGS'
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    instrument_type = models.IntegerField(choices=instrument_type.choices, default=instrument_type.CHEQUE)
-    receipt_no = models.TextField( max_length=10)
-    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=False)
-    cheque_image = models.ImageField(upload_to='cheque_images/', null=True, blank=False)
-    cheque_date = models.DateField(null=True, blank=True)
-    cheque_amount = models.DecimalField(max_digits=18, decimal_places=4)
-    cheque_detail = models.TextField(null=False, blank=True, default='')
-    cheque_status = models.IntegerField(choices=ChequeStatus.choices, default=ChequeStatus.RECEIVED)
-
-    class Meta:
-        db_table = 'cheque_store'
-        verbose_name = 'Cheque Store'
-        verbose_name_plural = 'Cheque Stores'
-
-    def __str__(self):
-        return self.receipt_no
-
-class InvoiceChequeMap(models.Model):
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='cheque_allocations')  # Fixed
-    cheque_store = models.ForeignKey(ChequeStore, on_delete=models.CASCADE, related_name='invoice_cheques')
-    adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
-    adjusted_date = models.DateField(default=timezone.now)
-
-    class Meta:
-        db_table = 'invoice_cheque_map'
-        verbose_name = 'Invoice Cheque Map'
-        verbose_name_plural = 'Invoice Cheque Maps'
-
-    def __str__(self):
-        return f"{self.credit_invoice} : {self.cheque_store}"
+        return f"{self.credit_invoice} : {self.payment_detail}"
 
 
-class CustomerClaim(models.Model):
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    claim_no = models.TextField(max_length=10, editable=True)
-    claim = models.ForeignKey(MasterClaim,on_delete=models.PROTECT, blank=False, null=False)
-    customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
-    details = models.TextField( blank=True, null=True)
-    claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
+
+# class InvoiceChequeMap(models.Model):
+#     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+#     credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='cheque_allocations')  # Fixed
+#     cheque_store = models.ForeignKey(ChequeStore, on_delete=models.CASCADE, related_name='invoice_cheques')
+#     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
+#     adjusted_date = models.DateField(default=timezone.now)
+
+#     class Meta:
+#         db_table = 'invoice_cheque_map'
+#         verbose_name = 'Invoice Cheque Map'
+#         verbose_name_plural = 'Invoice Cheque Maps'
+
+#     def __str__(self):
+#         return f"{self.credit_invoice} : {self.cheque_store}"
+
+
+# class CustomerClaim(models.Model):
+#     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+#     claim_no = models.TextField(max_length=10, editable=True)
+#     claim = models.ForeignKey(MasterClaim,on_delete=models.PROTECT, blank=False, null=False)
+#     customer_payment = models.ForeignKey(CustomerPayment, on_delete=models.PROTECT, blank=False, null=True)
+#     details = models.TextField( blank=True, null=True)
+#     claim_amount = models.DecimalField( max_digits=18, decimal_places=4, null=False)
     
-    class Meta:
-        db_table = 'customer_claim'
-        verbose_name = 'Customer Claim'
-        verbose_name_plural = 'Customer Claims'
+#     class Meta:
+#         db_table = 'customer_claim'
+#         verbose_name = 'Customer Claim'
+#         verbose_name_plural = 'Customer Claims'
 
-    def __str__(self):
-        grn_display = self.creditinvoice.grn or ''
-        return f"{self.claim.claim_name} - {self.claim_amount} - {grn_display}"
+#     def __str__(self):
+#         grn_display = self.creditinvoice.grn or ''
+#         return f"{self.claim.claim_name} - {self.claim_amount} - {grn_display}"
 
-class InvoiceClaimMap(models.Model):
-    branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
-    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT, related_name='claim_allocations')  # Fixed
-    customer_claim = models.ForeignKey(CustomerClaim, on_delete=models.PROTECT,  blank=False, null=False, related_name='invoice_claim')
-    adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
-    adjusted_date = models.DateField(default=timezone.now)
+# class InvoiceClaimMap(models.Model):
+#     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
+#     credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.PROTECT, related_name='claim_allocations')  # Fixed
+#     customer_claim = models.ForeignKey(CustomerClaim, on_delete=models.PROTECT,  blank=False, null=False, related_name='invoice_claim')
+#     adjusted_amount = models.DecimalField(max_digits=18, decimal_places=4)
+#     adjusted_date = models.DateField(default=timezone.now)
 
-    class Meta:
-        db_table = 'invoice_claim_map'
-        verbose_name = 'Invoice claim Map'
-        verbose_name_plural = 'Invoice Claim Maps'
+#     class Meta:
+#         db_table = 'invoice_claim_map'
+#         verbose_name = 'Invoice claim Map'
+#         verbose_name_plural = 'Invoice Claim Maps'
 
-    def __str__(self):
-        return str(self.creditinvoice + " : "+ self.cheque_store)
+#     def __str__(self):
+#         return str(self.creditinvoice + " : "+ self.cheque_store)
