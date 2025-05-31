@@ -73,32 +73,6 @@ class Customer(models.Model):
         return self.name
 
 
-class CreditInvoice(models.Model):
-    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    grn = models.TextField(blank=True, null=True)
-    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
-    transaction_date = models.DateField(blank=False, null=False)
-    delivery_man = models.TextField(blank=True, null=True)
-    transaction_details = models.TextField(blank=True, null=True)
-    sales_amount = models.DecimalField(max_digits=18, decimal_places=4)
-    sales_return = models.DecimalField(max_digits=18, decimal_places=4)
-    payment_grace_days = models.IntegerField(default=0)
-    invoice_image = models.ImageField(upload_to='invoices/', null=True)
-    status = models.BooleanField(default=False)  #it is Payment_status, True = got payment , False= no payment 
-    updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    version = models.IntegerField(default=1)
-
-    class Meta:
-        db_table = 'credit_invoice'
-        verbose_name = 'Credit Invoice'
-        verbose_name_plural = 'Credit Invoices'
-
-    def __str__(self):
-        grn_display = self.grn or ''
-        return f"{self.customer.name} - {self.sales_amount} -{self.grn}"
-
 
 # Payment related changes
 # class TestData(models.Model):
@@ -143,7 +117,10 @@ class Payment(models.Model):
     alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)
     received_date = models.DateField(blank=False, null=False)
-    is_allocated = models.BooleanField(default=False)  # True if payment is allocated at least once, False if not allocated
+    claim_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)  # Total claim amount
+    cash_equivalent_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)
+    total_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)
+    shortage_amount= models.DecimalField(max_digits=18, decimal_places=4, default=0.0) 
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL,null=True)
     version = models.IntegerField(default=1)
@@ -179,6 +156,45 @@ class PaymentDetails(models.Model):
     def __str__(self):
         return f"{self.payment_instrument} - {self.detail}"
 
+class CreditInvoice(models.Model):
+    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    grn = models.TextField(blank=True, null=True)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, blank=False, null=False)    
+    transaction_date = models.DateField(blank=False, null=False)
+    delivery_man = models.TextField(blank=True, null=True)
+    transaction_details = models.TextField(blank=True, null=True)
+    sales_amount = models.DecimalField(max_digits=18, decimal_places=4)
+    sales_return = models.DecimalField(max_digits=18, decimal_places=4)
+    payment_grace_days = models.IntegerField(default=0)
+    invoice_image = models.ImageField(upload_to='invoices/', null=True)
+    status = models.BooleanField(default=False)  #it is Payment_status, True = got payment , False= no payment 
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, blank=False, null=True,  related_name='invoice_set')
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    version = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'credit_invoice'
+        verbose_name = 'Credit Invoice'
+        verbose_name_plural = 'Credit Invoices'
+
+    def __str__(self):
+        grn_display = self.grn or ''
+        return f"{self.customer.name} - {self.sales_amount} -{self.grn}"
+
+# class PaymentInvoiceMap(models.Model):
+#     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+#     payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name='invoices')
+#     credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, unique=True, related_name='payment')  # Fixed
+
+#     class Meta:
+#         db_table = 'payment_invoice_map'
+#         verbose_name = 'Payment Invoice Map'
+#         verbose_name_plural = 'Payment Invoice Maps'
+
+#     def __str__(self):
+#         return f"{self.payment}"
 
 # class MasterClaim(models.Model):  
 #     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
@@ -246,21 +262,6 @@ class PaymentDetails(models.Model):
 
 #     def __str__(self):
 #         return self.receipt_no
-
-class InvoicePaymentDetailMap(models.Model):
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
-    credit_invoice = models.ForeignKey(CreditInvoice, on_delete=models.CASCADE, related_name='payment_allocations')  # Fixed
-    payment_detail = models.ForeignKey(PaymentDetails, on_delete=models.CASCADE, related_name='invoice_payments')
-    allocated_amount = models.DecimalField(max_digits=18, decimal_places=4)
-
-    class Meta:
-        db_table = 'invoice_payment_detail_map'
-        verbose_name = 'Invoice Payment Detail Map'
-        verbose_name_plural = 'Invoice Payment Detail Maps'
-
-    def __str__(self):
-        return f"{self.credit_invoice} : {self.payment_detail}"
-
 
 
 # class InvoiceChequeMap(models.Model):

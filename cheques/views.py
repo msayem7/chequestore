@@ -42,7 +42,7 @@ from .models import (
     Branch, Customer, CreditInvoice #, CustomerPayment, ChequeStore,
     #CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
 )
-from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType, InvoicePaymentDetailMap
+from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType
 
 from cheques import serializers
 from .serializers import ( # You'll need to create these serializers
@@ -159,16 +159,21 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
     queryset = CreditInvoice.objects.all()
     lookup_field = 'alias_id'
     
+    class payment:
+        PAID = 'paid'
+        UNPAID = 'unpaid'
+        All = 'all'
+
     def get_queryset(self):
 
         
         params = self.request.query_params
         branch = params.get('branch')
         customer = params.get('customer')
-        status = params.get('status')
+        # status = params.get('status')
         date_from = params.get('transaction_date_after')
         date_to = params.get('transaction_date_before')
-        # include_payment = params.get('include_payment', 'false').lower() 
+        payment = params.get('payment')
 
         queryset = CreditInvoice.objects.all()
         
@@ -225,6 +230,21 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
             if cust and  cust.is_parent == False:
                 # If customer is not a parent, filter invoices for that specific customer
                 queryset = queryset.filter(customer=cust)
+
+        if payment:
+            if payment.lower() == self.payment.PAID:
+                # Filter for fully paid invoices
+                queryset = queryset.filter(payment__isnull = False)
+            elif payment.lower() == self.payment.UNPAID:
+                # Filter for unpaid invoices
+                queryset = queryset.filter(payment__isnull = True)
+            elif payment.lower() == self.payment.All:
+                # Include all invoices regardless of payment status
+                pass
+            else:
+                payment_id = Payment.objects.filter(alias_id=payment).first()
+                queryset = queryset.filter(payment = payment_id)
+
         
         # print('This queryset :', print(queryset.query))
         return queryset.order_by('transaction_date')
@@ -274,7 +294,7 @@ class PaymentInstrumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
         if branch_id:
             # Use alias_id directly in the filter
             queryset = queryset.filter(branch__alias_id=branch_id)
-            
+
         return queryset.order_by('serial_no')
     
     
@@ -350,6 +370,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
+        # return Response(x.data, status=status.HTTP_201_CREATED)
     
 
 
