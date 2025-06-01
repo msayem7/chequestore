@@ -83,7 +83,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         #     'parent': {'required': False}
         # }
 class CreditInvoiceSerializer(serializers.ModelSerializer):
-    alias_id = serializers.CharField() 
+    alias_id = serializers.CharField(read_only=True) 
 
     branch = serializers.SlugRelatedField(slug_field='alias_id', queryset=Branch.objects.all())
     customer = serializers.SlugRelatedField(slug_field='alias_id', queryset=Customer.objects.all())
@@ -106,6 +106,7 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
                   ,'sales_amount','sales_return', 'net_due' ,'payment_grace_days', 'payment', 'status', 'version' #'allocated',
                   )
         read_only_fields = ('alias_id', 'version') #, 'updated_at', 'updated_by'
+        optional_fields = ['payment']
     
        
     def create(self, validated_data):      
@@ -191,7 +192,7 @@ class PaymentDetailsSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PaymentCreateSerializer(serializers.ModelSerializer):
+class PaymentSerializer(serializers.ModelSerializer):
     branch = serializers.SlugRelatedField(
         slug_field='alias_id',
         queryset=Branch.objects.all()
@@ -202,6 +203,13 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
     )
     
     cash_equivalent_amount = serializers.DecimalField(
+        max_digits=18, 
+        decimal_places=4, 
+        required=False, 
+        default=0.0  # Default to 0.0 if not provided
+    )
+
+    claim_amount = serializers.DecimalField(
         max_digits=18, 
         decimal_places=4, 
         required=False, 
@@ -233,70 +241,70 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
                   'claim_amount','total_amount','shortage_amount', 'payment_details', 'invoices', 'version']
         read_only_fields = ['alias_id', 'version']
     
-    def create(self, validated_data):
-        # Extracting the nested fields
-        payment_details_data = validated_data.pop('paymentdetails_set')
-        invoices_data = validated_data.pop('invoice_set')  # Extract invoices data
+    # def create(self, validated_data):
+    #     # Extracting the nested fields
+    #     payment_details_data = validated_data.pop('paymentdetails_set')
+    #     invoices_data = validated_data.pop('invoice_set')  # Extract invoices data
 
-        cash_equivalent_amount = validated_data.pop('cash_equivalent_amount', 0.0)
-        claim_amount = validated_data.pop('claim_amount', 0.0)
-        total_amount = validated_data.pop('total_amount', 0.0)
-        shortage_amount = validated_data.pop('shortage_amount', 0.0)
+    #     cash_equivalent_amount = validated_data.pop('cash_equivalent_amount', 0.0)
+    #     claim_amount = validated_data.pop('claim_amount', 0.0)
+    #     total_amount = validated_data.pop('total_amount', 0.0)
+    #     shortage_amount = validated_data.pop('shortage_amount', 0.0)
         
 
-        # Debugging the invoices_data right before processing
-        print("Invoices Data before processing:", invoices_data)
+    #     # Debugging the invoices_data right before processing
+    #     print("Invoices Data before processing:", invoices_data)
 
-        # Create the payment object
-        payment = super().create(validated_data)
+    #     # Create the payment object
+    #     payment = super().create(validated_data)
 
-        errors = {}
-        for index, detail_data in enumerate(payment_details_data):
-            payment_instrument = detail_data['payment_instrument']
-            instrument_type = payment_instrument.instrument_type
+    #     errors = {}
+    #     for index, detail_data in enumerate(payment_details_data):
+    #         payment_instrument = detail_data['payment_instrument']
+    #         instrument_type = payment_instrument.instrument_type
 
-            if instrument_type.auto_number:
-                locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument_type.id)
-                locked_type.last_number += 1
-                detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
-                locked_type.save()
-            else:
-                # Check uniqueness
-                if PaymentDetails.objects.filter(branch=payment.branch, id_number=detail_data.get('id_number')).exists():
-                    errors[f'payment_details.{index}.id_number'] = ["This ID number already exists in this branch."]
+    #         if instrument_type.auto_number:
+    #             locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument_type.id)
+    #             locked_type.last_number += 1
+    #             detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
+    #             locked_type.save()
+    #         else:
+    #             # Check uniqueness
+    #             if PaymentDetails.objects.filter(branch=payment.branch, id_number=detail_data.get('id_number')).exists():
+    #                 errors[f'payment_details.{index}.id_number'] = ["This ID number already exists in this branch."]
 
-        if errors:
-            raise serializers.ValidationError(errors)
+    #     if errors:
+    #         raise serializers.ValidationError(errors)
 
-        # Create payment details if no errors
-        for detail_data in payment_details_data:
-            PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
+    #     # Create payment details if no errors
+    #     for detail_data in payment_details_data:
+    #         PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
 
-        # Iterate through the invoices and update them
-        for invoice_data in invoices_data:
-            # Ensure 'alias_id' is part of the invoice data
-            invoice_alias_id = invoice_data.get('alias_id')
-            if not invoice_alias_id:
-                raise serializers.ValidationError("Missing 'alias_id' for one or more invoices")
+    #     # Iterate through the invoices and update them
+    #     for invoice_data in invoices_data:
+    #         # Ensure 'alias_id' is part of the invoice data
+    #         invoice_alias_id = invoice_data.get('alias_id')
+    #         if not invoice_alias_id:
+    #             raise serializers.ValidationError("Missing 'alias_id' for one or more invoices")
 
-            try:
-                # Fetch the CreditInvoice model instance based on alias_id
-                invoice = CreditInvoice.objects.get(alias_id=invoice_alias_id)
+    #         try:
+    #             # Fetch the CreditInvoice model instance based on alias_id
+    #             invoice = CreditInvoice.objects.get(alias_id=invoice_alias_id)
 
-                # Assign the payment to the invoice
-                invoice.payment = payment
-                invoice.status = True  # Mark as paid
-                invoice.save()
-            except CreditInvoice.DoesNotExist:
-                raise serializers.ValidationError(f"Invoice with alias_id {invoice_alias_id} does not exist.")
+    #             # Assign the payment to the invoice
+    #             invoice.payment = payment
+    #             invoice.status = True  # Mark as paid
+    #             invoice.save()
+    #         except CreditInvoice.DoesNotExist:
+    #             raise serializers.ValidationError(f"Invoice with alias_id {invoice_alias_id} does not exist.")
 
-        payment.total_amount = total_amount
-        payment.cash_equivalent_amount = cash_equivalent_amount
-        payment.claim_amount = claim_amount
-        payment.shortage_amount = shortage_amount
-        payment.save() 
+    #     payment.total_amount = total_amount
+    #     payment.cash_equivalent_amount = cash_equivalent_amount
+    #     payment.claim_amount = claim_amount
+    #     payment.shortage_amount = shortage_amount
+    #     payment.save() 
 
-        return payment
+    #     return payment
 
     # def create(self, validated_data):
     #     # transaction stat at view

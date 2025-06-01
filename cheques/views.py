@@ -50,7 +50,7 @@ from .serializers import ( # You'll need to create these serializers
     #CustomerPaymentSerializer,  #ChequeStoreSerializer, CustomerClaimSerializer,
     # InvoiceChequeMapSerializer, MasterClaimSerializer
 )
-from .serializers import PaymentInstrumentSerializer, PaymentViewSerializer, PaymentCreateSerializer, PaymentDetailsSerializer
+from .serializers import PaymentInstrumentSerializer, PaymentViewSerializer, PaymentSerializer, PaymentDetailsSerializer
 
 
 @api_view(['GET'])
@@ -309,6 +309,7 @@ class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
         branch_id = self.request.query_params.get('branch')
         is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
         
+        
         queryset = queryset.filter(is_active=is_active)
 
         if branch_id:
@@ -318,24 +319,31 @@ class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
         return queryset.order_by('serial_no')
     
 # In views.py - update PaymentViewSet
+# from rest_framework import status
+# from rest_framework.response import Response
+# from rest_framework.decorators import action
+# from django.db import transaction
+# from .models import Payment, PaymentDetails, CreditInvoice, PaymentInstrumentType
+# from .serializers import PaymentCreateSerializer, PaymentViewSerializer, PaymentDetailsSerializer, CreditInvoiceSerializer
+
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all()
     serializer_class = PaymentViewSerializer
     lookup_field = 'alias_id'
-    # filterset_fields = ['customer', 'received_date']
     
     def get_serializer_class(self):
-        if self.action == 'create':  # If it's a POST request (Create)
-            return PaymentCreateSerializer
-        return PaymentViewSerializer  # Default to the UserReadSerializer for GET requests
-    
+        if self.action == 'create':
+            return PaymentSerializer
+        return PaymentSerializer #PaymentViewSerializer
+     
     def get_queryset(self):
         queryset = super().get_queryset()
+
         branch_id = self.request.query_params.get('branch')
         date_from = self.request.query_params.get('date_from')
         date_to = self.request.query_params.get('date_to')
         customer_id = self.request.query_params.get('customer')
-        is_fully_allocated = self.request.query_params.get('is_fully_allocated')
+        # is_fully_allocated = self.request.query_params.get('is_fully_allocated')
         
     
         if branch_id:
@@ -349,29 +357,98 @@ class PaymentViewSet(viewsets.ModelViewSet):
             
         if customer_id:
             queryset = queryset.filter(customer__alias_id=customer_id)
-            
-        # Annotate with payment totals
-        # queryset = queryset.annotate(
-        #     total_payment=Sum('paymentdetails__amount')
-            
-        # )
-        
-        # Filter by allocation status if provided
-        if is_fully_allocated and is_fully_allocated.lower() != 'all':
-            if is_fully_allocated.lower() == 'yes':
-                queryset = queryset.filter(paymentdetails__is_allocated=True).distinct()
-            elif is_fully_allocated.lower() == 'no':
-                queryset = queryset.filter(paymentdetails__is_allocated=False).distinct()
-        
+       
         # print (queryset.query)
         
         return queryset.order_by('-received_date')
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
-        # return Response(x.data, status=status.HTTP_201_CREATED)
-    
+        # Get data from the request
+        validated_data = request.data
+        
+        # Extract nested data
+        payment_details_data = validated_data.pop('payment_details', [])
+        invoices_data = validated_data.pop('invoices', [])
+        cash_equivalent_amount = validated_data.pop('cash_equivalent_amount', 0.0)
+        total_amount = validated_data.pop('total_amount', 0.0)
+        shortage_amount = validated_data.pop('shortage_amount', 0.0)
+
+       
+        branch_alias_id = validated_data.get('branch')
+        try:
+            branch = Branch.objects.get(alias_id=branch_alias_id)
+        except Branch.DoesNotExist:
+            return Response({"error": f"Branch with alias_id {branch_alias_id} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+        validated_data['branch'] = branch
+
+        customer_alias_id = validated_data.get('customer')
+        try:
+            customer = Customer.objects.get(alias_id=customer_alias_id)
+        except Customer.DoesNotExist:
+            return Response({"error": f"Customer with alias_id {customer_alias_id} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+        validated_data['customer'] = customer
+         # Create the Payment instance
+        payment = Payment.objects.create(**validated_data)
+
+        # Handle PaymentDetails
+        errors = {}
+        for index, detail_data in enumerate(payment_details_data):
+            payment_instrument = detail_data['payment_instrument']
+            
+            try:
+                instrument = PaymentInstrument.objects.get(id=payment_instrument)
+            except Customer.DoesNotExist:
+                return Response({"error": f"Instruement with id {payment_instrument} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+            payment_details_data[index]['payment_instrument'] = instrument
+            # try:
+            #     instrument_type = PaymentInstrumentType.objects.get(id=instrument.instrument_type)
+            # except Customer.DoesNotExist:
+            #     return Response({"error": f"Instruement with id {instrument.instrument_type} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+            
+
+            # instrument_type = payment_instrument.instrument_type
+
+            # Handle auto-number generation
+            if instrument.instrument_type.auto_number:
+                locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument.instrument_type.id)
+                locked_type.last_number += 1
+                detail_data['id_number'] = f"{locked_type.prefix}{locked_type.last_number:04d}"
+                locked_type.save()
+            else:
+                # Check if the ID number is unique within the same branch
+                if PaymentDetails.objects.filter(branch=payment.branch, id_number=detail_data.get('id_number')).exists():
+                    errors[f'payment_details.{index}.id_number'] = ["This ID number already exists in this branch."]
+        
+        if errors:
+            return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create PaymentDetails objects
+        for detail_data in payment_details_data:
+            PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
+
+        # Update CreditInvoices
+        for invoice_data in invoices_data:
+            invoice_alias_id = invoice_data.get('alias_id')
+            if not invoice_alias_id:
+                return Response({"error": "Missing 'alias_id' for one or more invoices"}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                invoice = CreditInvoice.objects.get(alias_id=invoice_alias_id)
+                invoice.payment = payment
+                invoice.status = True  # Mark invoice as paid
+                invoice.save()
+            except CreditInvoice.DoesNotExist:
+                return Response({"error": f"Invoice with alias_id {invoice_alias_id} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update the Payment amounts
+        payment.total_amount = total_amount
+        payment.cash_equivalent_amount = cash_equivalent_amount
+        payment.shortage_amount = shortage_amount
+        payment.save()
+
+        # Return the created payment object with the serializer
+        return Response(PaymentViewSerializer(payment).data, status=status.HTTP_201_CREATED)
 
 
 # ----------------- end of payment implementation---------------------
