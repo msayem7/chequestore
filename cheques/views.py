@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.db.models import (
-    F, Sum,Value, DecimalField, ExpressionWrapper, DurationField, DateField,
+    F, Sum,Value, DecimalField,IntegerField, ExpressionWrapper, DurationField, DateField,
     Subquery, OuterRef, Q, Case, When
 )
 from django.db.models.functions import Coalesce, Cast, Concat
@@ -18,7 +18,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
-
+from django.utils import timezone
 
 # Django REST Framework Imports
 from rest_framework import viewsets, status
@@ -177,33 +177,6 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
 
         queryset = CreditInvoice.objects.all()
         
-        # is_include_payment = include_payment.lower() == 'true'
-        # if is_include_payment:
-            # Subquery for cheque allocations
-            # InvoicePaymentDetailMap
-            # cheque_subquery = (
-            #     InvoicePaymentDetailMap.objects
-            #     .filter(credit_invoice=OuterRef('pk'))
-            #     .values('credit_invoice')
-            #     .annotate(total_allocated=Sum('adjusted_amount'))
-            #     .values('total')
-            # )
-
-            # queryset = CreditInvoice.objects.annotate(
-            #     cheque_allocated=Coalesce(
-            #         Subquery(cheque_subquery, output_field=DecimalField()),
-            #         Decimal('0.0')
-            #     ),
-            #     claim_allocated=Coalesce(
-            #         Subquery(claim_subquery, output_field=DecimalField()),
-            #         Decimal('0.0')
-            #     ),
-            #     total_allocated=F('cheque_allocated') + F('claim_allocated'),
-            #     net_due=F('sales_amount') - F('sales_return') - F('total_allocated')
-            # )
-        
-        
-
         # Apply filters
         if branch:
             queryset = queryset.filter(branch__alias_id=branch)
@@ -332,8 +305,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     lookup_field = 'alias_id'
     
     def get_serializer_class(self):
-        if self.action == 'create':
-            return PaymentSerializer
+        # if self.action == 'create':
+        #     return PaymentSerializer
         return PaymentSerializer #PaymentViewSerializer
      
     def get_queryset(self):
@@ -395,20 +368,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
         errors = {}
         for index, detail_data in enumerate(payment_details_data):
             payment_instrument = detail_data['payment_instrument']
-            
+
             try:
                 instrument = PaymentInstrument.objects.get(id=payment_instrument)
             except Customer.DoesNotExist:
                 return Response({"error": f"Instruement with id {payment_instrument} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
             payment_details_data[index]['payment_instrument'] = instrument
-            # try:
-            #     instrument_type = PaymentInstrumentType.objects.get(id=instrument.instrument_type)
-            # except Customer.DoesNotExist:
-            #     return Response({"error": f"Instruement with id {instrument.instrument_type} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
             
-
-            # instrument_type = payment_instrument.instrument_type
-
             # Handle auto-number generation
             if instrument.instrument_type.auto_number:
                 locked_type = PaymentInstrumentType.objects.select_for_update().get(pk=instrument.instrument_type.id)
@@ -822,7 +788,7 @@ class CustomerStatementViewSet(viewsets.ViewSet):
         return opening_balance
     
 # Parent Org wise due reports
-class ParentDueReportView(APIView):
+class ParentDueReportView_X(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
@@ -962,10 +928,188 @@ class ParentDueReportView(APIView):
         return results
 
 # Customer Hierarchy wise due reports
-   
 
+# class ParentCustomerDueReport(APIView):
+#     permission_classes = [IsAuthenticated]
+    
+#     def get(self, request):
+#         # Step 1: Get date parameter
+#         date_filter = request.query_params.get('date', datetime.now().date())
+        
+#         # Step 2: Retrieve Parent Customers (exclude customers with no children)
+#         parent_customers = Customer.objects.filter(is_parent=True).prefetch_related('children')
+        
+#         # Step 3: Create response data
+#         report_data = []
+        
+#         for parent in parent_customers:
+#             parent_data = {
+#                 "parent_name": parent.name,
+#                 "children": []
+#             }
+            
+#             total_matured_due = total_immature_due = 0
+            
+#             # Step 4: Loop through child customers
+#             for child in parent.children.all():
+#                 matured_due = 0
+#                 immature_due = 0
+                
+#                 # Step 5: Get invoices for the child customer
+#                 invoices = CreditInvoice.objects.filter(customer=child #, transaction_date + grace_days <)
+#                     ).annotate(
+#                         maturity_date=ExpressionWrapper(
+#                             F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
+#                             output_field=DateField()
+#                         ),
+#                         is_paid= True if F(payment__received_date) <date_filter else False,
+#                         net_sales=F('sales_amount') - F('sales_return')
+#                     ).filter(
+#                         payment_date__lt=date_filter
+#                     )
+                
+#                 for invoice in invoices:
+#                     # Step 6: Check if the invoice is matured or immature
+#                     if invoice.transaction_date < date_filter:
+#                         matured_due += invoice.sales_amount - invoice.sales_return
+#                     else:
+#                         immature_due += invoice.sales_amount - invoice.sales_return
+                
+#                 # Step 7: Add the child's dues to the parent
+#                 parent_data["children"].append({
+#                     "child_name": child.name,
+#                     "matured_due": matured_due,
+#                     "immature_due": immature_due,
+#                     "total_due": matured_due + immature_due
+#                 })
+                
+#                 # Step 8: Calculate total dues for the parent
+#                 total_matured_due += matured_due
+#                 total_immature_due += immature_due
+            
+#             # Step 9: Add total dues for the parent
+#             parent_data["total_matured_due"] = total_matured_due
+#             parent_data["total_immature_due"] = total_immature_due
+#             parent_data["total_due"] = total_matured_due + total_immature_due
+            
+#             # Step 10: Add to report
+#             report_data.append(parent_data)
+        
+#         return Response({
+#             "report": report_data
+#         })
+
+# --------Latest:01  parent customer due
+
+class ParentCustomerDueReport(APIView):
+    def get(self, request):
+        report_date_str = request.query_params.get('date')
+        branch_alias_id = request.query_params.get('branch')  # New branch filter
+
+        # if branch_alias_id is None:
+        #     return Response(
+        #         {"error": "Banch Id is mandatory"},
+        #         status=status.HTTP_400_BAD_REQUEST
+        #     )
+        
+        try:
+            report_date = timezone.datetime.strptime(report_date_str, '%Y-%m-%d').date() if report_date_str else timezone.now().date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        
+        customer_qs = Customer.objects.all()
+        invoice_qs = CreditInvoice.objects.all()
+        
+        # Apply branch filter if provided
+        if branch_alias_id:
+            customer_qs = customer_qs.filter(branch__alias_id=branch_alias_id)
+            invoice_qs = invoice_qs.filter(branch__alias_id=branch_alias_id)
+        
+        # Query 1: Get all parent-child relationships with alias_id
+        customer_hierarchy = Customer.objects.filter(
+            ( Q(is_parent=True) | Q(parent__isnull=False))
+        ).values('alias_id', 'name', 'is_parent', 'parent__alias_id', 'parent__name')
+        
+        # Query 2: Get all due invoice amounts grouped by customer
+        due_amounts = CreditInvoice.objects.filter(
+            customer__parent__isnull=False,  # Only child customers
+            transaction_date__lte=report_date
+        ).filter(
+            Q(payment__isnull=True) |
+            Q(payment__received_date__gt=report_date)
+        ).annotate(
+            is_matured=Case(
+                When(transaction_date__lte=report_date-F('payment_grace_days'),
+                     then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField()
+            )
+        ).values('customer__alias_id').annotate(
+            matured_due=Sum('sales_amount', filter=Q(is_matured=1)),
+            immature_due=Sum('sales_amount', filter=Q(is_matured=0))
+        )
+        
+        # Process in Python
+        parents = {c['alias_id']: c for c in customer_hierarchy if c['is_parent']}
+        children = {c['alias_id']: c for c in customer_hierarchy if not c['is_parent']}
+        
+        report_data = []
+        grand_total_matured = 0
+        grand_total_immature = 0
+        grand_total_due = 0
+        
+        for parent in parents.values():
+            parent_entry = {
+                'alias_id': parent['alias_id'],
+                'name': parent['name'],
+                'matured_due': 0,
+                'immature_due': 0,
+                'total_due': 0,
+                'children': []
+            }
+            
+            for child in children.values():
+                if child['parent__alias_id'] == parent['alias_id']:
+                    amounts = next(
+                        (a for a in due_amounts 
+                         if a['customer__alias_id'] == child['alias_id']), 
+                        {}
+                    )
+                    child_entry = {
+                        'alias_id': child['alias_id'],
+                        'name': child['name'],
+                        'matured_due': amounts.get('matured_due', Decimal(0)) or Decimal(0), 
+                        'immature_due': amounts.get('immature_due', Decimal(0)) or Decimal(0)
+                    }
+                    child_entry['total_due'] = child_entry['matured_due'] + child_entry['immature_due']
+                    parent_entry['children'].append(child_entry)
+                    parent_entry['matured_due'] += child_entry['matured_due']
+                    parent_entry['immature_due'] += child_entry['immature_due']
+                    parent_entry['total_due'] += child_entry['total_due']
+                    
+                    grand_total_matured += child_entry['matured_due']
+                    grand_total_immature += child_entry['immature_due']
+                    grand_total_due += child_entry['total_due']
+            
+            report_data.append(parent_entry)
+        
+        return Response({
+            'report_date': report_date.strftime('%Y-%m-%d'),
+            'data': report_data,
+            'grand_totals': {
+                'matured_due': grand_total_matured,
+                'immature_due': grand_total_immature,
+                'total_due': grand_total_due
+            }
+        })
+    
+# Following report is old report
 @api_view(['GET'])
-def parent_customer_due_report(request):
+def parent_customer_due_report_X(request):
     try:
 
         branch_alias = request.query_params.get('branch_id')
@@ -975,7 +1119,7 @@ def parent_customer_due_report(request):
             return Response({"error": "Branch parameter is required"}, status=400)
 
         branch = Branch.objects.get(alias_id=branch_alias)      
-        
+
         # with connection.cursor() as cursor:
         #     cursor.callproc('get_parent_customer_due', [branch_id, end_date])
             # rows = cursor.fetchall()

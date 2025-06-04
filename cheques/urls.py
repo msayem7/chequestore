@@ -5,7 +5,7 @@ from .views import ( CustomerViewSet
                     #, MasterClaimViewSet
                     # , CustomerClaimViewSet
                     # , CustomerPaymentViewSet
-                    , CustomerStatementViewSet, ParentDueReportView) # InvoiceChequeMapViewSet, ChequeStoreViewSet,
+                    , CustomerStatementViewSet, ParentDueReportView_X) # InvoiceChequeMapViewSet, ChequeStoreViewSet,
 
 from .views import PaymentInstrumentTypeViewSet, PaymentInstrumentsViewSet, PaymentViewSet
 

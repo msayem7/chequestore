@@ -7,16 +7,18 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.conf import settings
 from django.conf.urls.static import static
 from cheques.views import CustomTokenObtainPairView, user_detail, \
-    unallocated_payments,ParentDueReportView,InvoicePaymentReportView,\
-    parent_customer_due_report
+    unallocated_payments,ParentDueReportView_X, InvoicePaymentReportView,\
+    parent_customer_due_report_X
+from cheques.views import ParentCustomerDueReport
  #, CIvsChequeReportView
 # from cheques.views import frontend_config
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('v1/chq/parent-customer-due/', parent_customer_due_report, name='parent-customer-due'),
+     path('v1/chq/parent-customer-due-report/', ParentCustomerDueReport.as_view(), name='parent-customer-due-report'),
+    path('v1/chq/parent-customer-due/', parent_customer_due_report_X, name='parent-customer-due'),
     path('v1/chq/unallocated-payments/', unallocated_payments, name='unallocated-payments'),
-    path('v1/chq/ParentDueReportView/', ParentDueReportView.as_view(), name='parent-due-report'),
+    path('v1/chq/ParentDueReportView/', ParentDueReportView_X.as_view(), name='parent-due-report'),
     path('v1/chq/reports/invoice-payments/', InvoicePaymentReportView.as_view(), name='invoice-payment-report'),
     path('v1/chq/', include('cheques.urls')),
     
