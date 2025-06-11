@@ -1,4 +1,5 @@
 from django.db import models
+from rest_framework.exceptions import ValidationError
 from src.inve_lib.inve_lib import generate_slugify_id, generate_alias_id
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -135,6 +136,7 @@ class Payment(models.Model):
     
 class PaymentDetails(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
     id_number = models.CharField(max_length=10, blank=False, null=True)  # branch wise Unique identifier for the payment detail
     payment = models.ForeignKey(Payment, on_delete=models.PROTECT, blank=False, null=False)   
     payment_instrument = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE , blank=False, null=False) 
@@ -183,3 +185,36 @@ class CreditInvoice(models.Model):
         grn_display = self.grn or ''
         return f"{self.customer.name} - {self.sales_amount} -{self.grn}"
 
+
+class Claim(models.Model):
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, blank=False, null=False)
+    alias_id = models.TextField(default=generate_slugify_id, max_length=10, unique=True, editable=False)
+    payment_details = models.OneToOneField(PaymentDetails, on_delete=models.CASCADE, blank=False, null=False, related_name='payment_detail')
+    submitted_date = models.DateField(blank=False, null=True)
+    refund_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0.0)
+    refund_date = models.DateField(blank=False, null=True)
+    remarks = models.TextField(blank= True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    version = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'claim'
+        verbose_name = 'Claim'
+        verbose_name_plural = 'Claims'
+
+    def __str__(self):
+        return f"Claim {self.alias_id} - {self.refund_amount} refunded"
+
+    @property
+    def is_fully_refunded(self):
+        # The claim is fully refunded if the refund amount equals the claim amount
+        return self.refund_amount == self.payment_details.amount
+
+    def clean(self):
+        if self.is_fully_refunded and self.refund_amount != self.payment_details.amount:
+            raise ValidationError("Refund amount must be equal to the claim amount if fully refunded.")
+        if not self.is_fully_refunded and self.refund_amount > self.payment_details.amount:
+            raise ValidationError("Refund amount cannot exceed the claim amount unless fully refunded.")
+        if self.refund_date < self.submitted_date:
+            raise ValidationError("Refund date cannot be earlier than the submitted date.")

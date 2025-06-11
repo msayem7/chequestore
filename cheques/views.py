@@ -19,16 +19,20 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
 from django.utils import timezone
+from django_filters import rest_framework as filters
+# from django_filters import FilterSet, CharFilter, DateFilter, DecimalFilter
+from django_filters.rest_framework import DjangoFilterBackend , FilterSet, CharFilter, DateFilter, NumberFilter
+
 
 # Django REST Framework Imports
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, filters
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 from rest_framework_simplejwt.views import TokenObtainPairView
-from django_filters import rest_framework as filters
+from rest_framework.pagination import PageNumberPagination # Import pagination class
 
 # Third-Party Imports
 from reportlab.pdfgen import canvas
@@ -42,15 +46,16 @@ from .models import (
     Branch, Customer, CreditInvoice #, CustomerPayment, ChequeStore,
     #CustomerClaim, InvoiceChequeMap, InvoiceClaimMap, MasterClaim
 )
-from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType
+from .models import PaymentInstrument, Payment, PaymentDetails, PaymentInstrumentType, Claim
 
 from cheques import serializers
 from .serializers import ( # You'll need to create these serializers
-    BranchSerializer, CustomerSerializer, CreditInvoiceSerializer,
+    ClaimListSerializer, ClaimUpdateSerializer
     #CustomerPaymentSerializer,  #ChequeStoreSerializer, CustomerClaimSerializer,
     # InvoiceChequeMapSerializer, MasterClaimSerializer
 )
-from .serializers import PaymentInstrumentSerializer, PaymentViewSerializer, PaymentSerializer, PaymentDetailsSerializer
+from .serializers import PaymentInstrumentSerializer, PaymentSerializer, PaymentDetailsSerializer
+
 
 
 @api_view(['GET'])
@@ -61,6 +66,12 @@ def user_detail(request):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = serializers.CustomTokenObtainPairSerializer
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class BranchViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.BranchSerializer
@@ -280,6 +291,7 @@ class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         branch_id = self.request.query_params.get('branch')
+        instrument_type_serial_no = self.request.query_params.get('instrument_type_serial_no')
         is_active = self.request.query_params.get('is_active', 'true').lower() == 'true'
         
         
@@ -288,20 +300,16 @@ class PaymentInstrumentsViewSet(viewsets.ModelViewSet):
         if branch_id:
             # Use alias_id directly in the filter
             queryset = queryset.filter(branch__alias_id=branch_id)
-            
+
+        if instrument_type_serial_no:
+            queryset = queryset.filter(instrument_type__serial_no=instrument_type_serial_no)
+
         return queryset.order_by('serial_no')
     
-# In views.py - update PaymentViewSet
-# from rest_framework import status
-# from rest_framework.response import Response
-# from rest_framework.decorators import action
-# from django.db import transaction
-# from .models import Payment, PaymentDetails, CreditInvoice, PaymentInstrumentType
-# from .serializers import PaymentCreateSerializer, PaymentViewSerializer, PaymentDetailsSerializer, CreditInvoiceSerializer
 
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all()
-    serializer_class = PaymentViewSerializer
+    serializer_class = PaymentSerializer #PaymentViewSerializer
     lookup_field = 'alias_id'
     
     def get_serializer_class(self):
@@ -389,9 +397,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if errors:
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create PaymentDetails objects
+        # Create PaymentDetails and claim objects
         for detail_data in payment_details_data:
-            PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
+            payment_details= PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
+            if instrument.instrument_type.serial_no == 3:
+                Claim.objects.create(branch=payment.branch, payment_details = payment_details
+                )
 
         # Update CreditInvoices
         for invoice_data in invoices_data:
@@ -414,603 +425,145 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment.save()
 
         # Return the created payment object with the serializer
-        return Response(PaymentViewSerializer(payment).data, status=status.HTTP_201_CREATED)
+        # return Response(PaymentViewSerializer(payment).data, status=status.HTTP_201_CREATED)
+        return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
+# class ClaimFilter(FilterSet):
+#     customer = CharFilter(field_name='payment_details__payment__customer__alias_id', lookup_expr='icontains')
+#     instrument = CharFilter(field_name='payment_details__payment_instrument__serial_no', lookup_expr='exact')
+#     claim_date = DateFilter(field_name='payment_details__payment__received_date', lookup_expr='gte')
 
+#     # Range filters for claim_amount, refund_amount, and remaining_amount
+#     claim_amount_min = NumberFilter(field_name='payment_details__amount', lookup_expr='gte')  # claim_amount >= min
+#     claim_amount_max = NumberFilter(field_name='payment_details__amount', lookup_expr='lte')  # claim_amount <= max
+    
+#     refund_amount_min = NumberFilter(field_name='refund_amount', lookup_expr='gte')  # refund_amount >= min
+#     refund_amount_max = NumberFilter(field_name='refund_amount', lookup_expr='lte')  # refund_amount <= max
+    
+#     remaining_amount_min = NumberFilter(field_name='remaining_amount', lookup_expr='gte')  # remaining_amount >= min
+#     remaining_amount_max = NumberFilter(field_name='remaining_amount', lookup_expr='lte')  # remaining_amount <= max
+    
+
+#     class Meta:
+#         model = Claim
+#         fields = ['customer', 'instrument', 'claim_date', 
+#                   'claim_amount_min', 'claim_amount_max', 
+#                   'refund_amount_min', 'refund_amount_max', 
+#                   'remaining_amount_min', 'remaining_amount_max']
+
+class ClaimFilter(FilterSet):
+    customer = CharFilter(field_name='payment_details__payment__customer__alias_id', lookup_expr='icontains')
+    instrument = CharFilter(field_name='payment_details__payment_instrument__serial_no', lookup_expr='exact')
+    claim_date = DateFilter(field_name='payment_details__payment__received_date', lookup_expr='gte')
+
+    # Range filters for claim_amount, refund_amount, and remaining_amount
+    claim_amount_min = NumberFilter(field_name='payment_details__amount', lookup_expr='gte')
+    claim_amount_max = NumberFilter(field_name='payment_details__amount', lookup_expr='lte')
+    
+    refund_amount_min = NumberFilter(field_name='refund_amount', lookup_expr='gte')
+    refund_amount_max = NumberFilter(field_name='refund_amount', lookup_expr='lte')
+    
+    remaining_amount_min = NumberFilter(field_name='remaining_amount', lookup_expr='gte')
+    remaining_amount_max = NumberFilter(field_name='remaining_amount', lookup_expr='lte')
+
+    class Meta:
+        model = Claim
+        fields = [
+            'customer', 
+            'instrument', 
+            'claim_date',
+            'claim_amount_min', 
+            'claim_amount_max',
+            'refund_amount_min', 
+            'refund_amount_max',
+            'remaining_amount_min', 
+            'remaining_amount_max'
+        ]
+
+class ClaimViewSet(viewsets.ModelViewSet):
+    queryset = Claim.objects.select_related(
+        'payment_details__payment__customer',
+        'payment_details__payment_instrument',
+        'payment_details__payment_instrument__instrument_type',
+    ).filter(
+        payment_details__payment_instrument__instrument_type__serial_no=3
+    ).annotate(
+        remaining_amount=ExpressionWrapper(
+            F('payment_details__amount') - Coalesce(F('refund_amount'), 0),
+            output_field=DecimalField()
+        )
+    )  # Assuming serial_no 3 is for claims
+    # queryset =queryset.filter(instrument_type__serial_no=3)  # Assuming serial_no 3 is for claims
+    serializer_class = ClaimListSerializer
+    lookup_field = 'alias_id'
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_class = ClaimFilter
+    # filterset_fields = {
+    #     'payment_details__payment__customer__alias_id': ['icontains'],
+    #     'payment_details__payment_instrument__instrument_name': ['icontains'],
+    #     'payment_details__payment__received_date': ['lte'], #['exact', 'gte', 'lte'],
+    # }
+    search_fields = [
+        'payment_details__payment__customer__alias_id',
+        'payment_details__payment_instrument__instrument_name',
+    ]
+    # Add this line to enable pagination for this ViewSet
+    # pagination_class = StandardResultsSetPagination
+
+    # def get_queryset(self):
+    #     queryset = super().get_queryset()
+
+    #     branch_id = self.request.query_params.get('branch')
+    #     date_from = self.request.query_params.get('date_from')
+    #     date_to = self.request.query_params.get('date_to')
+    #     customer_id = self.request.query_params.get('customer')
+    #     # is_fully_allocated = self.request.query_params.get('is_fully_allocated')
+        
+    
+    #     if branch_id:
+    #         queryset = queryset.filter(branch__alias_id=branch_id)
+            
+    #     if date_from:
+    #         queryset = queryset.filter(received_date__gte=date_from)
+            
+    #     if date_to:
+    #         queryset = queryset.filter(received_date__lte=date_to)
+            
+    #     if customer_id:
+    #         queryset = queryset.filter(customer__alias_id=customer_id)
+       
+    #     # print (queryset.query)
+        
+    #     return queryset.order_by('-received_date')
+
+    def get_serializer_class(self):
+        if self.action in ['update', 'partial_update']:
+            return ClaimUpdateSerializer
+        return ClaimListSerializer
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def update_claim(self, request, *args, **kwargs):
+        claim = self.get_object()
+        serializer = self.get_serializer(claim, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=request.user, version=claim.version + 1)
+        return Response(serializer.data)
+    
 # ----------------- end of payment implementation---------------------
 
-# class MasterClaimViewSet(viewsets.ModelViewSet):
-#     queryset = MasterClaim.objects.select_related('branch')
-#     serializer_class = serializers.MasterClaimSerializer
-#     permission_classes = [IsAuthenticated]
-#     lookup_field = 'alias_id'
-
-#     def get_queryset(self):
-#         queryset = super().get_queryset()
-#         branch = self.request.query_params.get('branch', None)
-        
-#         if branch:
-#             queryset = queryset.filter(branch__alias_id=branch)
-        
-#         return queryset.order_by('claim_name')
-
-#     @transaction.atomic
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_create(serializer)
-#         headers = self.get_success_headers(serializer.data)
-#         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-#     @transaction.atomic
-#     def update(self, request, *args, **kwargs):
-#         partial = kwargs.pop('partial', False)
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_update(serializer)
-#         return Response(serializer.data)
-
-#     def perform_create(self, serializer):
-#         serializer.save(
-#             updated_by=self.request.user,
-#             version=1  # Initialize version for new entries
-#         )
-
-#     def perform_update(self, serializer):
-#         serializer.save(
-#             updated_by=self.request.user,
-#             version=serializer.instance.version + 1
-#         )
-
-# class CustomerClaimViewSet(viewsets.ModelViewSet):
-#     queryset = CustomerClaim.objects.all()
-#     serializer_class = serializers.CustomerClaimSerializer
-#     lookup_field = 'claim_no'
-
-#     def get_queryset(self):
-#         queryset = super().get_queryset()
-#         branch = self.request.query_params.get('branch')
-#         invoice = self.request.query_params.get('invoice')
-#         # add filter using invoice__receipt_no
-
-#         if branch:
-#             queryset = queryset.filter(branch__alias_id=branch)
-#         if invoice:
-#             queryset = queryset.filter(creditinvoice__alias_id=invoice)
-#         return queryset
-
-#     @transaction.atomic
-#     def create(self, request, *args, **kwargs):
-#         return super().create(request, *args, **kwargs)
-
-    
-#     @transaction.atomic
-#     def update(self, request, *args, **kwargs):
-#         instance = self.get_object()
-#         if int(request.data.get('version')) != instance.version:
-#             return Response({'error': 'Version conflict'}, status=status.HTTP_409_CONFLICT)
-        
-#         return super().update(request, *args, **kwargs)
-
-@api_view(['GET'])
-def unallocated_payments(request):
-    branch = request.query_params.get('branch')
-    customer = request.query_params.get('customer')
-    
-    if not branch or not customer:
-        return Response({'error': 'Branch and customer parameters are required'}, status=400)
-    
-    payments = ChequeStore.objects.filter(
-        branch__alias_id=branch,
-        customer_payment__customer__alias_id=customer
-    ).annotate(
-        allocated=Sum(Coalesce('invoice_cheques__adjusted_amount', Decimal(0)))
-    ).filter(
-        cheque_amount__gt=F('allocated') or 0
-    )
-    # print(payments.query)
-    serializer = ChequeStoreSerializer(payments, many=True)
-    # print(serializer.data)
-    return Response(serializer.data)
-
-
-# class CustomerPaymentViewSet(viewsets.ModelViewSet):
-#     serializer_class = serializers.CustomerPaymentSerializer
-#     queryset = CustomerPayment.objects.all()
-#     lookup_field = 'alias_id'
-
-#     def get_queryset(self):
-#         return self.queryset.filter(
-#             branch__alias_id=self.request.query_params.get('branch')
-#         ).select_related('customer', 'branch')
-    
-#     def create(self, request, *args, **kwargs):
-#         with transaction.atomic():
-#             serializer = self.get_serializer(data=request.data)
-#             serializer.is_valid(raise_exception=True)
-#             self.perform_create(serializer)
-#             headers = self.get_success_headers(serializer.data)
-#             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-class CustomerStatementViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
-    
-    def list(self, request):
-        # Get query parameters
-        branch_id = request.query_params.get('branch')
-        customer_id = request.query_params.get('customer')
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
-        
-        if not all([branch_id, customer_id, date_from, date_to]):
-            return Response(
-                {'error': 'Customer, date_from and date_to parameters are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Convert string dates to date objects (not datetime)
-            from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-            to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-            
-            # Get the customer and branch
-            customer = Customer.objects.get(alias_id=customer_id, branch__alias_id=branch_id)
-            branch = Branch.objects.get(alias_id=branch_id)
-            
-            # Calculate opening balance
-            opening_balance = self._calculate_opening_balance(customer, branch, from_date)
-            
-            # Get sales transactions with calculated payment date
-            sales_data = CreditInvoice.objects.filter(
-                customer=customer,
-                branch=branch
-            ).annotate(
-                payment_date=ExpressionWrapper(
-                    F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
-                    output_field=DateField()
-                ),
-                net_sales=F('sales_amount') - F('sales_return')
-            ).filter(
-                payment_date__gte=from_date,
-                payment_date__lte=to_date
-            ).values(
-                'transaction_date',
-                'payment_date',
-                'grn',
-                'transaction_details',
-                'sales_amount',
-                'sales_return',
-                'net_sales',
-                'payment_grace_days'
-            )
-            
-            # Get cheque transactions
-            # Get cheque transactions with proper field aliasing
-            cheque_data = ChequeStore.objects.filter(
-                customer_payment__customer=customer,
-                branch=branch,
-                customer_payment__received_date__gte=from_date,
-                customer_payment__received_date__lte=to_date
-            ).select_related('customer_payment').values(
-                'instrument_type', 
-                'receipt_no',
-                'cheque_detail',
-                'cheque_amount',
-                received_date=F('customer_payment__received_date')
-            )
-            
-            # Get claim transactions
-            claim_data = CustomerClaim.objects.filter(
-                customer_payment__customer=customer,
-                branch=branch,
-                customer_payment__received_date__gte=from_date,
-                customer_payment__received_date__lte=to_date
-            ).select_related('customer_payment', 'claim').values(
-                'claim_no',
-                'details',
-                'claim_amount',
-                received_date=F('customer_payment__received_date')
-            )
-            
-            # Prepare statement data
-            statement_data = []
-            current_balance = opening_balance
-
-            INSTRUMENT_TYPE_NAMES = {
-                1: 'Cash',
-                2: 'Cheque',
-                3: 'Pay Order',  # For Demand Draft
-                4: 'EFT',
-                5: 'RTGS'
-            }
-            # Add opening balance row
-            statement_data.append({
-                'transaction_type_id': 0,
-                'transaction_type_name': 'Opening Balance',
-                'date': from_date,
-                'particular': 'Opening Balance',
-                'sales_amount': Decimal('0'),
-                'sales_return': Decimal('0'),
-                'net_sales': Decimal('0'),
-                'received': Decimal('0'),
-                'balance': opening_balance
-            })
-            
-            # Process sales transactions
-            for sale in sales_data:
-                # current_balance += sale['net_sales']
-                transaction_date = sale['transaction_date']
-                if isinstance(transaction_date, datetime):
-                    transaction_date = transaction_date.date()
-                
-                payment_date = sale['payment_date']
-                if isinstance(payment_date, datetime):
-                    payment_date = payment_date.date()
-                
-                particular = (
-                    f"Invoice No: {sale['grn']}, "
-                    f"Sales Date: {transaction_date.strftime('%Y-%m-%d')}, "
-                    f"Due Date: {payment_date.strftime('%Y-%m-%d')}, "
-                    f"Grace Days: {sale['payment_grace_days']}, "
-                    f"Details: {sale['transaction_details'] or ''}"
-                )
-                statement_data.append({
-                    'transaction_type_id': 1,
-                    'transaction_type_name': 'Sales',
-                    'date': payment_date,
-                    'particular': particular.strip(),
-                    'sales_amount': sale['sales_amount'],
-                    'sales_return': sale['sales_return'],
-                    'net_sales': sale['net_sales'],
-                    'received': Decimal('0'),
-                    'balance': 0
-                    # 'balance': current_balance
-                })
-            
-            # Process cheque transactions
-            for cheque in cheque_data:
-                # current_balance -= cheque['cheque_amount']
-                received_date = cheque['received_date']
-                if isinstance(received_date, datetime):
-                    received_date = received_date.date()
-                
-                particular = f"{cheque['receipt_no']} {cheque['cheque_detail'] or ''}"
-                instrument_type_name = INSTRUMENT_TYPE_NAMES.get(cheque['instrument_type'], 'Unknown')
-                statement_data.append({
-                    'transaction_type_id': 2,
-                    'transaction_type_name': instrument_type_name,
-                    'date': received_date,
-                    'particular': particular.strip(),
-                    'sales_amount': Decimal('0'),
-                    'sales_return': Decimal('0'),
-                    'net_sales': Decimal('0'),
-                    'received': cheque['cheque_amount'],
-                    'balance': 0
-                    # 'balance': current_balance
-                })
-            
-            # Process claim transactions
-            for claim in claim_data:
-                # current_balance -= claim['claim_amount']
-                received_date = claim['received_date']
-                if isinstance(received_date, datetime):
-                    received_date = received_date.date()
-                
-                particular = f"Claim No: {claim['claim_no']} {claim['details'] or ''}"
-                
-                statement_data.append({
-                    'transaction_type_id': 3,
-                    'transaction_type_name': 'Claim',
-                    'date': received_date,
-                    'particular': particular.strip(),
-                    'sales_amount': Decimal('0'),
-                    'sales_return': Decimal('0'),
-                    'net_sales': Decimal('0'),
-                    'received': claim['claim_amount'],
-                    'balance': 0
-                    # 'balance': current_balance
-                })
-            
-            # Sort by date and transaction type
-            statement_data.sort(key=lambda x: (x['date'], x['transaction_type_id']))
-            for tr in statement_data:
-                 tr['balance'] =  current_balance+ tr['net_sales'] - tr['received']   
-                 current_balance = tr['balance']
-                  
-            # print (statement_data)
-            # Serialize the data
-            serializer = serializers.CustomerStatementSerializer(statement_data, many=True)
-            
-            return Response({
-                'opening_balance': opening_balance,
-                'closing_balance': current_balance,
-                'transactions': serializer.data
-            })
-            
-        except Customer.DoesNotExist:
-            return Response(
-                {'error': 'Customer not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Branch.DoesNotExist:
-            return Response(
-                {'error': 'Branch not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    
-    def _calculate_opening_balance(self, customer, branch, cutoff_date):
-        """Calculate opening balance as of cutoff_date"""
-        # Sum all sales with payment date before cutoff
-        sales_before = CreditInvoice.objects.filter(
-            customer=customer,
-            branch=branch
-        ).annotate(
-            payment_date=ExpressionWrapper(
-                F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
-                output_field=DateField()
-            )
-        ).filter(
-            payment_date__lt=cutoff_date
-        ).aggregate(
-            total_sales=Coalesce(Sum('sales_amount'), Decimal('0')),
-            total_returns=Coalesce(Sum('sales_return'), Decimal('0'))
-        )
-        
-        # Sum all payments before cutoff date
-        payments_before = CustomerPayment.objects.filter(
-            customer=customer,
-            branch=branch,
-            received_date__lt=cutoff_date
-        ).aggregate(
-            total_cheques=Coalesce(
-                Sum('chequestore__cheque_amount'),
-                Decimal('0')
-            ),
-            total_claims=Coalesce(
-                Sum('customerclaim__claim_amount'),
-                Decimal('0')
-            )
-        )
-        
-        opening_balance = (
-            sales_before['total_sales'] - 
-            sales_before['total_returns'] - 
-            payments_before['total_cheques'] - 
-            payments_before['total_claims']
-        )
-        
-        return opening_balance
-    
-# Parent Org wise due reports
-class ParentDueReportView_X(APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        branch_alias = request.query_params.get('branch')
-        cutoff_date = request.query_params.get('cutoff_date', '2050-12-31')
-        sort_by = request.query_params.get('sort_by', 'due')
-
-        try:
-            if not branch_alias:
-                return Response({"error": "Branch parameter is required"}, status=400)
-
-            branch = Branch.objects.get(alias_id=branch_alias)
-            parent_org_dues = self._get_parent_org_dues(branch.id, cutoff_date, sort_by)
-            
-            return Response({
-                'success': True,
-                'data': parent_org_dues,
-                'meta': {
-                    'branch': branch.name,
-                    'cutoff_date': cutoff_date,
-                    'total_due': sum(item['due'] for item in parent_org_dues),
-                    'count': len(parent_org_dues)
-                }
-            }, status=200)
-            
-        except Branch.DoesNotExist:
-            return Response({"error": "Branch not found"}, status=404)
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-    def _get_parent_org_dues(self, branch_id, end_date='2050-12-31', sort_by='due'):
-        """
-        Get parent organization dues with sorting options
-        
-        Parameters:
-        - branch_id: Branch ID to filter by
-        - end_date: Cutoff date (default: '2050-12-31')
-        - sort_by: Sorting option ('due' for due amount descending or 'name' for name ascending)
-        """
-        # Validate sort_by parameter
-        valid_sort_options = ['due', 'name']
-        if sort_by not in valid_sort_options:
-            raise ValueError(f"Invalid sort_by parameter. Must be one of: {valid_sort_options}")
-
-        # Cheque Received subquery
-        cheque_received = CustomerPayment.objects.filter(
-            branch_id=branch_id,
-            received_date__lte=end_date
-        ).values('customer_id').annotate(
-            received=Sum('chequestore__cheque_amount', output_field=DecimalField(max_digits=18, decimal_places=4))
-        )
-
-        # Claim Received subquery
-        claim_received = CustomerPayment.objects.filter(
-            branch_id=branch_id,
-            received_date__lte=end_date
-        ).values('customer_id').annotate(
-            received=Sum('customerclaim__claim_amount', output_field=DecimalField(max_digits=18, decimal_places=4))
-        )
-
-        # Invoice subquery
-        invoice = CreditInvoice.objects.filter(
-            branch_id=branch_id,
-            transaction_date__lte=end_date
-        ).values('customer_id').annotate(
-            net_sales=Sum(
-                F('sales_amount') - F('sales_return'),
-                output_field=DecimalField(max_digits=18, decimal_places=4)
-            )
-        )
-
-        # Combine all results and group by parent organization
-        from collections import defaultdict
-        
-        # Create a dictionary to store results by parent organization
-        parent_org_results = defaultdict(lambda: {
-            'parent_org_alias_id': '',
-            'parent_org_name': '',
-            'net_sales': Decimal('0'),
-            'cash': Decimal('0'),
-            'claim': Decimal('0'),
-            'due': Decimal('0')
-        })
-        
-        # Get all unique customer IDs
-        all_customers = set()
-        all_customers.update(item['customer_id'] for item in cheque_received)
-        all_customers.update(item['customer_id'] for item in claim_received)
-        all_customers.update(item['customer_id'] for item in invoice)
-        
-        # Prefetch parent information for all customers
-        customers_with_parents = Customer.objects.filter(
-            id__in=all_customers,
-            parent__isnull=False
-        ).select_related('parent')
-        
-        # Create mapping of customer to parent
-        customer_parent_map = {
-            cust.id: cust.parent 
-            for cust in customers_with_parents
-        }
-        
-        # Process each customer
-        for customer_id in all_customers:
-            parent = customer_parent_map.get(customer_id)
-            if not parent:
-                continue  # Skip customers without parent
-            
-            # Find matching records in each queryset
-            cheque_data = next((item for item in cheque_received if item['customer_id'] == customer_id), {'received': Decimal('0')})
-            claim_data = next((item for item in claim_received if item['customer_id'] == customer_id), {'received': Decimal('0')})
-            invoice_data = next((item for item in invoice if item['customer_id'] == customer_id), {'net_sales': Decimal('0')})
-            
-            # Calculate values
-            net_sales = invoice_data.get('net_sales', Decimal('0'))
-            cash = cheque_data.get('received', Decimal('0'))
-            claim = claim_data.get('received', Decimal('0'))
-            due = net_sales - cash - claim
-            
-            # Add to parent organization totals
-            parent_org_results[parent.id]['parent_org_alias_id'] = parent.alias_id
-            parent_org_results[parent.id]['parent_org_name'] = parent.name
-            parent_org_results[parent.id]['net_sales'] += net_sales
-            parent_org_results[parent.id]['cash'] += cash
-            parent_org_results[parent.id]['claim'] += claim
-            parent_org_results[parent.id]['due'] += due
-        
-        # Convert to list of dictionaries
-        results = list(parent_org_results.values())
-        
-        # Apply sorting
-        if sort_by == 'due':
-            results.sort(key=lambda x: x['due'], reverse=True)  # Descending order
-        elif sort_by == 'name':
-            results.sort(key=lambda x: x['parent_org_name'].lower())  # Case-insensitive ascending
-        
-        return results
-
-# Customer Hierarchy wise due reports
-
-# class ParentCustomerDueReport(APIView):
-#     permission_classes = [IsAuthenticated]
-    
-#     def get(self, request):
-#         # Step 1: Get date parameter
-#         date_filter = request.query_params.get('date', datetime.now().date())
-        
-#         # Step 2: Retrieve Parent Customers (exclude customers with no children)
-#         parent_customers = Customer.objects.filter(is_parent=True).prefetch_related('children')
-        
-#         # Step 3: Create response data
-#         report_data = []
-        
-#         for parent in parent_customers:
-#             parent_data = {
-#                 "parent_name": parent.name,
-#                 "children": []
-#             }
-            
-#             total_matured_due = total_immature_due = 0
-            
-#             # Step 4: Loop through child customers
-#             for child in parent.children.all():
-#                 matured_due = 0
-#                 immature_due = 0
-                
-#                 # Step 5: Get invoices for the child customer
-#                 invoices = CreditInvoice.objects.filter(customer=child #, transaction_date + grace_days <)
-#                     ).annotate(
-#                         maturity_date=ExpressionWrapper(
-#                             F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
-#                             output_field=DateField()
-#                         ),
-#                         is_paid= True if F(payment__received_date) <date_filter else False,
-#                         net_sales=F('sales_amount') - F('sales_return')
-#                     ).filter(
-#                         payment_date__lt=date_filter
-#                     )
-                
-#                 for invoice in invoices:
-#                     # Step 6: Check if the invoice is matured or immature
-#                     if invoice.transaction_date < date_filter:
-#                         matured_due += invoice.sales_amount - invoice.sales_return
-#                     else:
-#                         immature_due += invoice.sales_amount - invoice.sales_return
-                
-#                 # Step 7: Add the child's dues to the parent
-#                 parent_data["children"].append({
-#                     "child_name": child.name,
-#                     "matured_due": matured_due,
-#                     "immature_due": immature_due,
-#                     "total_due": matured_due + immature_due
-#                 })
-                
-#                 # Step 8: Calculate total dues for the parent
-#                 total_matured_due += matured_due
-#                 total_immature_due += immature_due
-            
-#             # Step 9: Add total dues for the parent
-#             parent_data["total_matured_due"] = total_matured_due
-#             parent_data["total_immature_due"] = total_immature_due
-#             parent_data["total_due"] = total_matured_due + total_immature_due
-            
-#             # Step 10: Add to report
-#             report_data.append(parent_data)
-        
-#         return Response({
-#             "report": report_data
-#         })
 
 # --------Latest:01  parent customer due
-
 class ParentCustomerDueReport(APIView):
     def get(self, request):
         report_date_str = request.query_params.get('date')
         branch_alias_id = request.query_params.get('branch')  # New branch filter
 
-        # if branch_alias_id is None:
-        #     return Response(
-        #         {"error": "Banch Id is mandatory"},
-        #         status=status.HTTP_400_BAD_REQUEST
-        #     )
+        if branch_alias_id is None:
+            return Response(
+                {"error": "Banch Id is mandatory"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             report_date = timezone.datetime.strptime(report_date_str, '%Y-%m-%d').date() if report_date_str else timezone.now().date()
@@ -1107,102 +660,70 @@ class ParentCustomerDueReport(APIView):
             }
         })
     
-# Following report is old report
-@api_view(['GET'])
-def parent_customer_due_report_X(request):
-    try:
 
-        branch_alias = request.query_params.get('branch_id')
-        end_date = request.query_params.get('end_date', '2023-12-31')
+# class InvoicePaymentReportView(APIView):
+#     def get(self, request):
+#         customer_id = request.query_params.get('customer_id')
+#         start_date = request.query_params.get('start_date')
+#         end_date = request.query_params.get('end_date')
+#         report_format = request.query_params.get('format', 'html')
         
-        if not branch_alias:
-            return Response({"error": "Branch parameter is required"}, status=400)
+#         if not customer_id:
+#             return Response(
+#                 {"error": "Customer ID is required"},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        branch = Branch.objects.get(alias_id=branch_alias)      
-
-        # with connection.cursor() as cursor:
-        #     cursor.callproc('get_parent_customer_due', [branch_id, end_date])
-            # rows = cursor.fetchall()
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM get_parent_customer_due(%s, %s)",
-                [branch.id, end_date]
-            )
-            columns = [col[0] for col in cursor.description]
-            data = [
-                dict(zip(columns, row))
-                for row in cursor.fetchall()
-            ]
-           
-        return Response(data)
-    
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-
-
-class InvoicePaymentReportView(APIView):
-    def get(self, request):
-        customer_id = request.query_params.get('customer_id')
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        report_format = request.query_params.get('format', 'html')
+#         # Build query
+#         query = Q(customer__alias_id=customer_id)
         
-        if not customer_id:
-            return Response(
-                {"error": "Customer ID is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Build query
-        query = Q(customer__alias_id=customer_id)
-        
-        if start_date:
-            try:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-                query &= Q(transaction_date__gte=start_date)
-            except ValueError:
-                return Response(
-                    {"error": "Invalid start date format. Use YYYY-MM-DD"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+#         if start_date:
+#             try:
+#                 start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+#                 query &= Q(transaction_date__gte=start_date)
+#             except ValueError:
+#                 return Response(
+#                     {"error": "Invalid start date format. Use YYYY-MM-DD"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
                 
-        if end_date:
-            try:
-                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-                query &= Q(transaction_date__lte=end_date)
-            except ValueError:
-                return Response(
-                    {"error": "Invalid end date format. Use YYYY-MM-DD"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+#         if end_date:
+#             try:
+#                 end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+#                 query &= Q(transaction_date__lte=end_date)
+#             except ValueError:
+#                 return Response(
+#                     {"error": "Invalid end date format. Use YYYY-MM-DD"},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
 
-        invoices = CreditInvoice.objects.filter(query).order_by('transaction_date')
+#         invoices = CreditInvoice.objects.filter(query).order_by('transaction_date')
         
-        # Calculate totals
-        for invoice in invoices:
+#         # Calculate totals
+#         for invoice in invoices:
             
-            cheque_allocated = invoice.cheque_allocations.aggregate(
-                total=Sum('adjusted_amount')
-            )['total'] or 0 
-            claim_allocated= invoice.claim_allocations.aggregate(
-                total=Sum('adjusted_amount')
-            )['total'] or 0
+#             cheque_allocated = invoice.cheque_allocations.aggregate(
+#                 total=Sum('adjusted_amount')
+#             )['total'] or 0 
+#             claim_allocated= invoice.claim_allocations.aggregate(
+#                 total=Sum('adjusted_amount')
+#             )['total'] or 0
 
-            invoice.total_allocated  = cheque_allocated+claim_allocated
-            invoice.due_amount = invoice.sales_amount - invoice.sales_return - invoice.total_allocated
+#             invoice.total_allocated  = cheque_allocated+claim_allocated
+#             invoice.due_amount = invoice.sales_amount - invoice.sales_return - invoice.total_allocated
 
-        serializer = serializers.InvoicePaymentReportSerializer(invoices, many=True)
+#         serializer = serializers.InvoicePaymentReportSerializer(invoices, many=True)
        
-        customer = Customer.objects.filter(alias_id=customer_id).first()
-        if report_format == 'json':
-            return Response(serializer.data)
-        else:
-            # For HTML, Excel, PDF - we'll handle in the frontend
-            return Response({
-                'data': serializer.data,
-                'customer': invoices[0].customer.name if invoices else '',
-                'start_date': start_date,
-                'end_date': end_date
-            })
+#         customer = Customer.objects.filter(alias_id=customer_id).first()
+#         if report_format == 'json':
+#             return Response(serializer.data)
+#         else:
+#             # For HTML, Excel, PDF - we'll handle in the frontend
+#             return Response({
+#                 'data': serializer.data,
+#                 'customer': invoices[0].customer.name if invoices else '',
+#                 'start_date': start_date,
+#                 'end_date': end_date
+#             })
+
+    
