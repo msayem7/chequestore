@@ -175,27 +175,21 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
         UNPAID = 'unpaid'
         All = 'all'
 
+    
     def get_queryset(self):
-
-        
         params = self.request.query_params
         branch = params.get('branch')
         customer = params.get('customer')
-        # status = params.get('status')
         date_from = params.get('transaction_date_after')
         date_to = params.get('transaction_date_before')
-        payment = params.get('payment')
+        payment_status = params.get('payment', 'all')
+        report_date = params.get('report_date')
 
         queryset = CreditInvoice.objects.all()
         
         # Apply filters
         if branch:
             queryset = queryset.filter(branch__alias_id=branch)
-        # if customer:
-        #     queryset = queryset.filter(customer__alias_id=customer)
-        # if status:
-        #     is_active = status.lower() == 'true'
-        #     queryset = queryset.filter(status=is_active)
         if date_from:
             queryset = queryset.filter(transaction_date__gte=date_from)
         if date_to:
@@ -203,35 +197,87 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
 
         if customer:
             cust = Customer.objects.filter(alias_id=customer).first()
-
-            if cust and  cust.is_parent:
-            # If customer is a parent, filter invoices for all child customers
+            if cust and cust.is_parent:
                 child_customers = Customer.objects.filter(
-                    Q(parent_id=cust)
-                )#.values_list('alias_id', flat=True)
-
+                    Q(parent_id=cust))
                 queryset = queryset.filter(customer__in=child_customers)
-            if cust and  cust.is_parent == False:
-                # If customer is not a parent, filter invoices for that specific customer
+            elif cust and not cust.is_parent:
                 queryset = queryset.filter(customer=cust)
 
-        if payment:
-            if payment.lower() == self.payment.PAID:
-                # Filter for fully paid invoices
-                queryset = queryset.filter(payment__isnull = False)
-            elif payment.lower() == self.payment.UNPAID:
-                # Filter for unpaid invoices
-                queryset = queryset.filter(payment__isnull = True)
-            elif payment.lower() == self.payment.All:
-                # Include all invoices regardless of payment status
-                pass
-            else:
-                payment_id = Payment.objects.filter(alias_id=payment).first()
-                queryset = queryset.filter(payment = payment_id)
+        # Handle payment status filter
+        if payment_status.lower() == 'unpaid':
+            queryset = queryset.filter(payment__isnull=True)
+            # Handle matured dues if report_date is provided
+            if report_date:
+                try:
+                    report_date = datetime.strptime(report_date, '%Y-%m-%d').date()
+                    # Use ExpressionWrapper to calculate grace date for each invoice
+                    queryset = queryset.annotate(
+                        grace_date=ExpressionWrapper(
+                            F('transaction_date') + timedelta(days=1) * F('payment_grace_days'),
+                            output_field=DateField()
+                        )
+                    ).filter(grace_date__lte=report_date)
+                except ValueError:
+                    pass  # Ignore invalid date format
+
+        return queryset.order_by('transaction_date')
+
+    # def get_queryset(self):
+    #     params = self.request.query_params
+    #     branch = params.get('branch')
+    #     customer = params.get('customer')
+    #     # status = params.get('status')
+    #     date_from = params.get('transaction_date_after')
+    #     date_to = params.get('transaction_date_before')
+    #     payment = params.get('payment')
+
+    #     queryset = CreditInvoice.objects.all()
+        
+    #     # Apply filters
+    #     if branch:
+    #         queryset = queryset.filter(branch__alias_id=branch)
+    #     # if customer:
+    #     #     queryset = queryset.filter(customer__alias_id=customer)
+    #     # if status:
+    #     #     is_active = status.lower() == 'true'
+    #     #     queryset = queryset.filter(status=is_active)
+    #     if date_from:
+    #         queryset = queryset.filter(transaction_date__gte=date_from)
+    #     if date_to:
+    #         queryset = queryset.filter(transaction_date__lte=date_to)
+
+    #     if customer:
+    #         cust = Customer.objects.filter(alias_id=customer).first()
+
+    #         if cust and  cust.is_parent:
+    #         # If customer is a parent, filter invoices for all child customers
+    #             child_customers = Customer.objects.filter(
+    #                 Q(parent_id=cust)
+    #             )#.values_list('alias_id', flat=True)
+
+    #             queryset = queryset.filter(customer__in=child_customers)
+    #         if cust and  cust.is_parent == False:
+    #             # If customer is not a parent, filter invoices for that specific customer
+    #             queryset = queryset.filter(customer=cust)
+
+    #     if payment:
+    #         if payment.lower() == self.payment.PAID:
+    #             # Filter for fully paid invoices
+    #             queryset = queryset.filter(payment__isnull = False)
+    #         elif payment.lower() == self.payment.UNPAID:
+    #             # Filter for unpaid invoices
+    #             queryset = queryset.filter(payment__isnull = True)
+    #         elif payment.lower() == self.payment.All:
+    #             # Include all invoices regardless of payment status
+    #             pass
+    #         else:
+    #             payment_id = Payment.objects.filter(alias_id=payment).first()
+    #             queryset = queryset.filter(payment = payment_id)
 
         
-        # print('This queryset :', print(queryset.query))
-        return queryset.order_by('transaction_date')
+    #     # print('This queryset :', print(queryset.query))
+    #     return queryset.order_by('transaction_date')
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):

@@ -170,8 +170,8 @@ class CreditInvoice(models.Model):
     sales_return = models.DecimalField(max_digits=18, decimal_places=4)
     payment_grace_days = models.IntegerField(default=0)
     invoice_image = models.ImageField(upload_to='invoices/', null=True)
-    status = models.BooleanField(default=False)  #it is Payment_status, True = got payment , False= no payment 
-    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, blank=False, null=True,  related_name='invoice_set')
+    status = models.BooleanField(default=False) # this field id for future use
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, blank=False, null=True,  related_name='invoice_set') #this is indicate that this invoice is paid.
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     version = models.IntegerField(default=1)
