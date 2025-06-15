@@ -2,6 +2,7 @@ import logging
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import IntegrityError  # Add this import
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,33 @@ def custom_exception_handler(exc, context):
         exc_info=True,
         extra={'user': context['request'].user}
     )
+    
+     # Handle specific exception types
+    if isinstance(exc, IntegrityError):
+        # Extract meaningful message from IntegrityError
+        if 'unique_id_number' in str(exc):
+            return Response(
+                {
+                    'error': {
+                        'code': 400,
+                        'message': 'Duplicate ID number detected',
+                        'details': 'This ID number already exists in the branch. Please use a unique value.'
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        else:
+            return Response(
+                {
+                    'error': {
+                        'code': 400,
+                        'message': 'Database integrity error',
+                        'details': str(exc)
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     
     # Call default handler first
     response = exception_handler(exc, context)

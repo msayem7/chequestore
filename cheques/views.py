@@ -1,3 +1,6 @@
+# from django.db import IntegrityError
+import logging
+
 # --------------------Organized Imports--------------------
 # Standard Library Imports
 import io
@@ -8,7 +11,7 @@ from decimal import Decimal
 # Django Imports
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection, transaction, IntegrityError
 from django.db.models import (
     F, Sum,Value, DecimalField,IntegerField, ExpressionWrapper, DurationField, DateField,
     Subquery, OuterRef, Q, Case, When
@@ -57,6 +60,7 @@ from .serializers import ( # You'll need to create these serializers
 from .serializers import PaymentInstrumentSerializer, PaymentSerializer, PaymentDetailsSerializer
 
 
+logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -220,7 +224,11 @@ class CreditInvoiceViewSet(viewsets.ModelViewSet):
                     ).filter(grace_date__lte=report_date)
                 except ValueError:
                     pass  # Ignore invalid date format
-
+        elif payment_status.lower() == 'paid' or payment_status.lower() == 'all':
+                pass
+        elif payment_status:
+                queryset = queryset.filter(payment__alias_id=payment_status)
+        
         return queryset.order_by('transaction_date')
 
     # def get_queryset(self):
@@ -458,8 +466,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
             try:
                 invoice = CreditInvoice.objects.get(alias_id=invoice_alias_id)
-                invoice.payment = payment
-                invoice.status = True  # Mark invoice as paid
+                invoice.payment = payment # Mark invoice as paid
+                invoice.status = True  
                 invoice.save()
             except CreditInvoice.DoesNotExist:
                 return Response({"error": f"Invoice with alias_id {invoice_alias_id} does not exist."}, status=status.HTTP_400_BAD_REQUEST)
@@ -473,7 +481,151 @@ class PaymentViewSet(viewsets.ModelViewSet):
         # Return the created payment object with the serializer
         # return Response(PaymentViewSerializer(payment).data, status=status.HTTP_201_CREATED)
         return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+    
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        payment = self.get_object()
+        
+        # Version check
+        client_version = request.data.get('version')
+        if client_version and int(client_version) != payment.version:
+            return Response(
+                {"error": "This payment has been modified by another user. Please refresh."},
+                status=status.HTTP_409_CONFLICT
+            )
+
+        # Extract data
+        validated_data = request.data.copy()
+        payment_details_data = validated_data.pop('payment_details', [])
+        invoices_data = validated_data.pop('invoices', [])
+        
+        # Update payment fields
+        for field, value in validated_data.items():
+            if field in ['branch', 'customer']:
+                try:
+                    if field == 'branch':
+                        obj = Branch.objects.get(alias_id=value)
+                    else:
+                        obj = Customer.objects.get(alias_id=value)
+                    setattr(payment, field, obj)
+                except (Branch.DoesNotExist, Customer.DoesNotExist) as e:
+                    return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            elif hasattr(payment, field):
+                setattr(payment, field, value)
+
+        # Handle payment details updates
+        existing_detail_ids = [d.id for d in payment.paymentdetails_set.all()]
+        updated_detail_ids = []
+        
+        for detail_data in payment_details_data:
+            detail_id = detail_data.get('id')
+            if detail_id and detail_id in existing_detail_ids:
+                # Update existing detail
+                try:
+                    detail = PaymentDetails.objects.get(id=detail_id)
+                    instrument = PaymentInstrument.objects.get(id=detail_data['payment_instrument'])
+                    
+                    # For existing details, don't change ID number
+                    for field, value in detail_data.items():
+                        if field == 'payment_instrument':
+                            setattr(detail, field, instrument)
+                        elif field != 'id_number' and hasattr(detail, field):
+                            setattr(detail, field, value)
+                    detail.save()
+                    updated_detail_ids.append(detail.id)
+                except (PaymentDetails.DoesNotExist, PaymentInstrument.DoesNotExist):
+                    continue
+            else:
+                # Create new detail
+                try:
+                    instrument = PaymentInstrument.objects.get(id=detail_data['payment_instrument'])
+                    id_number = None
+                    
+                    # Handle auto-numbering
+                    if instrument.instrument_type.auto_number:
+                        # Lock the type row to prevent concurrent updates
+                        with transaction.atomic():
+                            locked_type = PaymentInstrumentType.objects.select_for_update().get(
+                                pk=instrument.instrument_type.id
+                            )
+                            locked_type.last_number += 1
+                            id_number = f"{locked_type.prefix}{locked_type.last_number:04d}"
+                            locked_type.save()
+                    else:
+                        id_number = detail_data.get('id_number', '')
+                        # Manual ID - check uniqueness
+                        if id_number and PaymentDetails.objects.filter(
+                            branch=payment.branch, 
+                            id_number=id_number
+                        ).exists():
+                            return Response(
+                                {"error": f"ID number {id_number} already exists in this branch"},
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+                    
+                    # Create detail
+                    detail = PaymentDetails.objects.create(
+                        payment=payment,
+                        branch=payment.branch,
+                        payment_instrument=instrument,
+                        id_number=id_number,
+                        amount=detail_data.get('amount', 0),
+                        detail=detail_data.get('detail', '')
+                    )
+                    updated_detail_ids.append(detail.id)
+                    
+                    # Create claim if needed
+                    if instrument.instrument_type.serial_no == 3:
+                        Claim.objects.create(
+                            branch=payment.branch,
+                            payment_details=detail
+                        )
+                            
+                except PaymentInstrument.DoesNotExist:
+                    continue
+
+        # Delete removed details
+        PaymentDetails.objects.filter(payment=payment).exclude(id__in=updated_detail_ids).delete()
+
+        # Handle invoice updates
+        existing_invoice_ids = [i.alias_id for i in payment.invoice_set.all()]
+        updated_invoice_ids = []
+        
+        for invoice_data in invoices_data:
+            invoice_alias_id = invoice_data.get('alias_id')
+            if invoice_alias_id:
+                try:
+                    invoice = CreditInvoice.objects.get(alias_id=invoice_alias_id)
+                    invoice.payment = payment
+                    invoice.status = True
+                    invoice.save()
+                    updated_invoice_ids.append(invoice.alias_id)
+                except CreditInvoice.DoesNotExist:
+                    continue
+
+        # Unlink removed invoices
+        CreditInvoice.objects.filter(
+            payment=payment
+        ).exclude(
+            alias_id__in=updated_invoice_ids
+        ).update(
+            payment=None,
+            status=False
+        )
+
+        # Update payment amounts and version
+        payment.total_amount = validated_data.get('total_amount', 0)
+        payment.cash_equivalent_amount = validated_data.get('cash_equivalent_amount', 0)
+        payment.shortage_amount = validated_data.get('shortage_amount', 0)
+        payment.version = F('version') + 1
+        payment.save()
+        payment.refresh_from_db()
+
+        return Response(PaymentSerializer(payment).data)
+    
+    
+        
 # class ClaimFilter(FilterSet):
 #     customer = CharFilter(field_name='payment_details__payment__customer__alias_id', lookup_expr='icontains')
 #     instrument = CharFilter(field_name='payment_details__payment_instrument__serial_no', lookup_expr='exact')

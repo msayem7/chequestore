@@ -90,7 +90,8 @@ class CreditInvoiceSerializer(serializers.ModelSerializer):
     payment_grace_days = serializers.IntegerField(read_only=True)
     customer_name = serializers.CharField(source='customer.name', read_only=True)
     status = serializers.BooleanField(default=True, required=False)
-    
+   
+
     payment = serializers.SlugRelatedField(slug_field='alias_id', required=False, allow_null=True, queryset=Payment.objects.all())
     
     
