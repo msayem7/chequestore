@@ -149,9 +149,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
     
 
     def update(self, request, *args, **kwargs):
-        if (HasCustomerActivity.has_Activity(self, request)):
-            return  Response({'error': 'Customer has active invoices or cheques. Inactivation is not possible'}, status=status.HTTP_409_CONFLICT)
-        return super().update(request, *args, **kwargs)
+        try:
+            is_active = request.data.get('is_active', None)
+            if not is_active and (HasCustomerActivity.has_Activity(self, request)):
+                return  Response({'error': 'Customer has active invoices or cheques. Inactivation is not possible'}, status=status.HTTP_409_CONFLICT)
+            return super().update(request, *args, **kwargs)
+        except Exception as e:
+            print("Error:", e)
+            return  Response({"error": f"Customer has active invoices. Inactivation is not possible. {e}"}, status=status.HTTP_409_CONFLICT)
 
 class HasCustomerActivity(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
@@ -160,12 +165,15 @@ class HasCustomerActivity(viewsets.ModelViewSet):
     def has_Activity(self, request, *args, **kwargs):
         try:
             customer = get_object_or_404(Customer, alias_id=request.parser_context['kwargs']['alias_id'])
-            # Check for credit invoices or cheque stores related to this customer
-            has_activity = (
-                CreditInvoice.objects.filter(customer=customer).exists() or
-                ChequeStore.objects.filter(customer_payment__customer=customer).exists()
-            )
-            return has_activity
+            if customer.is_parent:
+                return (
+                    CreditInvoice.objects.filter(Q(customer__parent=customer, payment__isnull=True)).exists()
+                )
+            else:
+                return (
+                    CreditInvoice.objects.filter(customer=customer, payment__isnull=True).exists() 
+                )
+            # return has_activity
         except Customer.DoesNotExist:
             return False
         
