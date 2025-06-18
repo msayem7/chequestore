@@ -174,10 +174,10 @@ class PaymentDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentDetails
         fields = [
-            'id_number', 'payment_instrument', 'instrument_type', 
+            'alias_id', 'id_number', 'payment_instrument', 'instrument_type', 
             'instrument_name', 'detail', 'amount'
         ]
-        read_only_fields = [ 'instrument_type', 'instrument_name']
+        read_only_fields = [ 'alias_id', 'instrument_type', 'instrument_name']
         optional_fields = ['id_number', 'detail']
     
     def validate(self, attrs):

@@ -507,7 +507,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
         validated_data = request.data.copy()
         payment_details_data = validated_data.pop('payment_details', [])
         invoices_data = validated_data.pop('invoices', [])
-        
+        print('payment_details_data:', payment_details_data)
+
         # Update payment fields
         for field, value in validated_data.items():
             if field in ['branch', 'customer']:
@@ -523,25 +524,34 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 setattr(payment, field, value)
 
         # Handle payment details updates
-        existing_detail_ids = [d.id for d in payment.paymentdetails_set.all()]
+        #existing_detail_alias_ids = [d.alias_id for d in payment.paymentdetails_set.all()]
+        # request_detail_alias_ids = [d.get('alias_id') for d in payment_details_data if d.get('alias_id')]
         updated_detail_ids = []
+
+        # if not set(existing_detail_id_numbers).issubset(set(request_detail_id_numbers)):
+        #     return Response({"error": "Numbers of existing information can't be deleted removed"}, status=status.HTTP_400_BAD_REQUEST)
         
+        # print('request_detail_id_numbers:', request_detail_id_numbers)
+
         for detail_data in payment_details_data:
-            detail_id = detail_data.get('id')
-            if detail_id and detail_id in existing_detail_ids:
+            detail_alias_id = detail_data.get('alias_id')
+            if detail_alias_id: # and detail_alias_id in existing_detail_alias_ids:
                 # Update existing detail
                 try:
-                    detail = PaymentDetails.objects.get(id=detail_id)
-                    instrument = PaymentInstrument.objects.get(id=detail_data['payment_instrument'])
-                    
+                    detail = PaymentDetails.objects.get(alias_id=detail_alias_id)
+                    # instrument = PaymentInstrument.objects.get(id=detail_data['payment_instrument'])
+                    if not detail.payment_instrument.id == detail_data['payment_instrument'] or not detail.id_number == detail_data['id_number']:
+                        return Response({"error": "Numbers of existing instrument or Id Number can't be deleted or changed"}, status=status.HTTP_400_BAD_REQUEST)
+                        # No changes to instrument or ID number, just update other fields
                     # For existing details, don't change ID number
                     for field, value in detail_data.items():
-                        if field == 'payment_instrument':
-                            setattr(detail, field, instrument)
-                        elif field != 'id_number' and hasattr(detail, field):
+                        # if field == 'payment_instrument':
+                        #     setattr(detail, field, instrument)
+                        # elif 
+                        if field != 'id_number' and field != 'payment_instrument' and field != 'alias_id' and hasattr(detail, field):
                             setattr(detail, field, value)
                     detail.save()
-                    updated_detail_ids.append(detail.id)
+                    updated_detail_ids.append(detail.alias_id)
                 except (PaymentDetails.DoesNotExist, PaymentInstrument.DoesNotExist):
                     continue
             else:
@@ -553,13 +563,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     # Handle auto-numbering
                     if instrument.instrument_type.auto_number:
                         # Lock the type row to prevent concurrent updates
-                        with transaction.atomic():
-                            locked_type = PaymentInstrumentType.objects.select_for_update().get(
-                                pk=instrument.instrument_type.id
-                            )
-                            locked_type.last_number += 1
-                            id_number = f"{locked_type.prefix}{locked_type.last_number:04d}"
-                            locked_type.save()
+                        # with transaction.atomic():
+                        locked_type = PaymentInstrumentType.objects.select_for_update().get(
+                            pk=instrument.instrument_type.id
+                        )
+                        locked_type.last_number += 1
+                        id_number = f"{locked_type.prefix}{locked_type.last_number:04d}"
+                        locked_type.save()
                     else:
                         id_number = detail_data.get('id_number', '')
                         # Manual ID - check uniqueness
@@ -581,7 +591,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         amount=detail_data.get('amount', 0),
                         detail=detail_data.get('detail', '')
                     )
-                    updated_detail_ids.append(detail.id)
+                    updated_detail_ids.append(detail.alias_id)
                     
                     # Create claim if needed
                     if instrument.instrument_type.serial_no == 3:
@@ -594,7 +604,12 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     continue
 
         # Delete removed details
-        PaymentDetails.objects.filter(payment=payment).exclude(id__in=updated_detail_ids).delete()
+        if (PaymentDetails.objects.filter(payment=payment).exclude(alias_id__in=updated_detail_ids).exists()):
+            return Response(
+                {"error": "Cannot remove existing payment details."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # PaymentDetails.objects.filter(payment=payment).exclude(id__in=updated_detail_ids).delete()
 
         # Handle invoice updates
         existing_invoice_ids = [i.alias_id for i in payment.invoice_set.all()]
