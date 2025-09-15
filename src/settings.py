@@ -39,7 +39,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@
 # DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['ezdist.netlify.app','ezcheque.netlify.app', 'localhost', '127.0.0.1',  'chequestore.onrender.com']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
+ALLOWED_HOSTS = ['ezdist.netlify.app','ezcheque.netlify.app', 'localhost', '127.0.0.1']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
 
 # Application definition
 
@@ -76,6 +76,7 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",  # Your Vue.js development server URL
+    "http://localhost:8081", 
     # "https://uuuuuu.pythonanywhere.com",
     "https://ezcheque.netlify.app",
     "https://ezdist.netlify.app"
@@ -179,15 +180,48 @@ WSGI_APPLICATION = 'src.wsgi.application'
 # DATABASES = {
 #     'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
 # }
+
+# Below was the testing configuration for Render.com
+# DATABASES = {
+#     'default': dj_database_url.config(default=config('DATABASE_URL', default='sqlite:///db.sqlite3'))
+# }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+# development Database settings for PostgreSQL
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'chequestoredb',        # Database name
+#         'USER': 'chequestoreuser',      # Database user postgres
+#         'PASSWORD': 'adam01',  # Check this!  sa1234
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
+# production Database settings for PostgreSQL
 DATABASES = {
-    'default': dj_database_url.config(default=config('DATABASE_URL', default='sqlite:///db.sqlite3'))
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DJANGO_DB_NAME', os.environ.get('POSTGRES_DB', 'chequestoredb')),
+        'USER': os.environ.get('DJANGO_DB_USER', os.environ.get('POSTGRES_USER', 'chequestoreuser')),
+        'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', os.environ.get('POSTGRES_PASSWORD', 'adam01')),
+        'HOST': os.environ.get('DJANGO_DB_HOST', os.environ.get('DB_HOST', 'localhost')),
+        'PORT': os.environ.get('DJANGO_DB_PORT', os.environ.get('DB_PORT', '5435')),
+    }
 }
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('DB_NAME', 'ezchq'),      # Database name
-#         'USER': os.environ.get('DB_USER', 'postgres'),      # Database user
-#         'PASSWORD': os.environ.get('DB_PASSWORD', 'sa1234'),  # Database password
+#         'NAME': os.environ.get('DB_NAME', 'chequestore'),      # Database name: ezchq
+#         'USER': os.environ.get('DB_USER', 'chequestoreuser'),      # Database user : postgres
+#         'PASSWORD': os.environ.get('DB_PASSWORD', 'adam01'),  # Database password: chequestorepass
 #         'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
 #         'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
 #     }
@@ -233,7 +267,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Security Settings - Add these settings for production:
-SECURE_SSL_REDIRECT = not DEBUG
+# SECURE_SSL_REDIRECT = not DEBUG
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = None
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_BROWSER_XSS_FILTER = True

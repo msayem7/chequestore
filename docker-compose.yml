@@ -1,0 +1,78 @@
+# version: '3.9'
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chequestoredb
+      POSTGRES_USER: chequestoreuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chequestoreuser -d chequestoredb"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    ports:
+      - "5435:5432"
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: ./.env    # or ./ .env if you move .env to project root
+    environment:
+      DJANGO_DB_HOST: db
+      DJANGO_DB_NAME: chequestoredb
+      DJANGO_DB_USER: chequestoreuser
+      DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DJANGO_DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    # DO NOT bind-mount code in production; remove volumes: - .:/app
+volumes:
+  postgres_data:
+# ...existing code...
+
+
+#----------- First Verion -------------------------
+# services:
+#   db:
+#     image: postgres:15
+#     environment:
+#       POSTGRES_DB: chequestore
+#       POSTGRES_USER: chequestoreuser
+#       POSTGRES_PASSWORD: adam#01
+#     healthcheck:
+#       # test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${DJANGO_DB_NAME}"]
+#       test: ["CMD-SHELL", "pg_isready -U chequestoreuser -d chequestore"]
+#       interval: 10s
+#       retries: 5
+#       start_period: 30s
+#       timeout: 10s
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     ports:
+#       - "5432:5432"
+
+#   web:
+#     build: .
+#     command: gunicorn --bind 0.0.0.0:8080 src.wsgi:application
+#     volumes:
+#       - .:/app
+#     ports:
+#       - "8080:8080"
+#     # depends_on:
+#     #   - db
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#         restart: true 
+#     env_file:
+#       ./src/.env
+# volumes:
+#   postgres_data:
