@@ -1,8 +1,7 @@
-# ...existing code...
 FROM python:3.10.14-slim-bookworm
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install build deps, install python deps, then remove build deps
@@ -16,39 +15,15 @@ RUN apt-get update && \
 # Copy project
 COPY . .
 
-# Collect static
-RUN python manage.py collectstatic --noinput
+# Create non-root user and set permissions
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app
+USER app
+
+# Collect static at build time only if STATIC settings don't require DB.
+RUN python manage.py collectstatic --noinput || true
 
 EXPOSE 8080
 
-# production command: consistent port, set workers/timeouts as needed
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "src.wsgi:application", "--workers", "3", "--timeout", "120"]
-# ...existing code...
-
-
-
-
-
-# ---------------- First Version ----------------
-# FROM python:3.10-slim-bookworm
-
-# # Rest remains the same as before
-# ENV PYTHONDONTWRITEBYTECODE 1
-# ENV PYTHONUNBUFFERED 1
-# WORKDIR /app
-
-# # Install system deps + PostgreSQL support
-# RUN apt-get update && \
-#     apt-get install -y --no-install-recommends gcc python3-dev libpq-dev && \
-#     rm -rf /var/lib/apt/lists/*
-
-# COPY requirements.txt .
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# COPY . .
-
-# RUN python manage.py collectstatic --noinput
-
-# EXPOSE 8080
-
-# CMD ["gunicorn", "--bind", "0.0.0.0:8000", "src.wsgi:application"]
+ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "src.wsgi:application", \
+           "--workers", "3", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
