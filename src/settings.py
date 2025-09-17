@@ -39,7 +39,9 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@
 # DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ['ezdist.netlify.app','ezcheque.netlify.app', 'localhost', '127.0.0.1']  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
+ALLOWED_HOSTS = ['ezdist.netlify.app','ezcheque.netlify.app', 'localhost', '127.0.0.1',
+    "https://srv1012667.hstgr.cloud:8080",  # Your Vue.js development server URL
+    "https://31.97.226.125:8080"]  # 'https://uuuuuu.pythonanywhere.com/', 'uuuuuu.pythonanywhere.com',
 
 # Application definition
 
