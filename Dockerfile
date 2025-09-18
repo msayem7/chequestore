@@ -25,5 +25,5 @@ RUN python manage.py collectstatic --noinput || true
 
 EXPOSE 8080
 
-ENTRYPOINT ["gunicorn", "--bind", "31.97.226.125:8080", "src.wsgi:application", \
-           "--workers", "3", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
+ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8000", "src.wsgi:application", \
+           "--workers", "3", "--timeout", "120"]

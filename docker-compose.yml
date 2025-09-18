@@ -30,18 +30,37 @@ services:
       DJANGO_DB_NAME: ${POSTGRES_DB}
       DJANGO_DB_USER: ${POSTGRES_USER}
       DJANGO_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DJANGO_DB_PORT: 5432
-      # DEBUG, SECRET_KEY, ALLOWED_HOSTS come from .env
+      DJANGO_DB_PORT: "5432"
+      # DEBUG, SECRET_KEY, ALLOWED_HOSTS come from .env    
+    volumes:
+      - static_volume:/app/staticfiles        # share static files with nginx
+    expose:
+      - "8000"                                # internal port only
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8080:8080"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    command: >
+      gunicorn --bind 0.0.0.0:8000 src.wsgi:application
+      --workers 3 --timeout 120
+
+    nginx:
+      image: nginx:1.25-alpine
+      restart: unless-stopped
+      ports:
+        - "80:80"
+        - "443:443"   # optional, only if you configure TLS later
+      volumes:
+        - static_volume:/usr/share/nginx/html/static:ro
+        - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      depends_on:
+        - web
+
+    # logging:
+    #   driver: "json-file"
+    #   options:
+    #     max-size: "10m"
+    #     max-file: "3"
 
 volumes:
   postgres_data:
+  static_volume:
