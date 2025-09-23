@@ -23,7 +23,7 @@ USER app
 # Collect static at build time only if STATIC settings don't require DB.
 RUN python manage.py collectstatic --noinput || true
 
-EXPOSE 8080
+EXPOSE 9000
 
-ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8000", "src.wsgi:application", \
-           "--workers", "3", "--timeout", "120"]
+# ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:9000", "src.wsgi:application", \
+#            "--workers", "3", "--timeout", "120"]

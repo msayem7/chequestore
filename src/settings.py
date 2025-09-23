@@ -58,7 +58,6 @@ INSTALLED_APPS = [
     'django_extensions',
     'rest_framework_simplejwt',
     'cheques.apps.ChequesConfig', 
-
 ]
 
 MIDDLEWARE = [
@@ -78,9 +77,9 @@ MIDDLEWARE = [
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",  # Your Vue.js development server URL
-    "http://localhost:8081", 
-    "https://srv1012667.hstgr.cloud:8080",  # Your Vue.js development server URL
-    "https://31.97.226.125:8080",
+    "http://localhost:8000", 
+    "https://srv1012667.hstgr.cloud:9000",
+    "https://31.97.226.125:9000",
     "https://ezcheque.netlify.app",
     "https://ezdist.netlify.app"
 ]
