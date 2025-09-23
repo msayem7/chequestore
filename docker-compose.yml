@@ -47,7 +47,7 @@ services:
     image: nginx:1.25-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8090:80"
+      - "8090:80"
       - "8443:443"   # optional, only if you configure TLS later
     volumes:
       - static_volume:/usr/share/nginx/html/static:ro
