@@ -33,6 +33,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Create non-root user and set permissions
 RUN addgroup --system app && adduser --system --ingroup app app
 
+# Create staticfiles directory with proper permissions BEFORE copying code
+RUN mkdir -p /app/staticfiles && chown -R app:app /app/staticfiles
+
 # Copy project code and entrypoint script
 COPY . .
 COPY entrypoint.sh /entrypoint.sh
