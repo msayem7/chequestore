@@ -16,13 +16,12 @@ services:
       retries: 5
       start_period: 30s
       timeout: 10s
-    # map host port only if you need host access; avoid 5432 if host uses it
     ports:
       - "5435:5432"
 
   web:
     build: .
-    restart: unless-stopped   #this line was not in suggession
+    restart: unless-stopped
     env_file:
       - ./.env
     environment:
@@ -33,33 +32,25 @@ services:
       DJANGO_DB_PORT: "5432"
       # DEBUG, SECRET_KEY, ALLOWED_HOSTS come from .env    
     volumes:
-      - static_volume:/app/staticfiles        # share static files with nginx
-                                  # internal port only
+      - static_volume:/app/staticfiles
     depends_on:
       db:
         condition: service_healthy
-    command: >
-       gunicorn --bind 0.0.0.0:9000 src.wsgi:application --workers 3 
-       --timeout 120 --access-logfile - --error-logfile -
+    # REMOVED the command section - now handled by entrypoint.sh
     expose:
-      - "9000"  
+      - "9000"
+  
   nginx:
     image: nginx:1.25-alpine
     restart: unless-stopped
     ports:
       - "8090:80"
-      - "8443:443"   # optional, only if you configure TLS later
+      - "8443:443"
     volumes:
       - static_volume:/usr/share/nginx/html/static:ro
       - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:rw
     depends_on:
       - web
-
-    # logging:
-    #   driver: "json-file"
-    #   options:
-    #     max-size: "10m"
-    #     max-file: "3"
 
 volumes:
   postgres_data:
