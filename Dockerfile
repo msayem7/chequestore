@@ -21,9 +21,9 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies including netcat
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 && \
+    apt-get install -y --no-install-recommends libpq5 netcat-openbsd && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder stage
