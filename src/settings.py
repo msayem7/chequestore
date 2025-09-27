@@ -40,6 +40,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-i+a!0^q$gt^l9-ecyasa@
 DEBUG = config('DEBUG', default=True, cast=bool)
 
 
+
 # ALLOWED_HOSTS = [
 #     'ezdist.netlify.app',
 #     'ezcheque.netlify.app', 
@@ -49,7 +50,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 #     'srv1012667.hstgr.cloud',  # Your VPS hostname
 #     # ... any other hosts you need
 # ]
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,31.97.226.125,srv1012667.hstgr.cloud').split(',')
 # Application definition
 
 INSTALLED_APPS = [
@@ -83,15 +84,16 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8080",  # Your Vue.js development server URL
-    "http://localhost:8000", 
-    "https://srv1012667.hstgr.cloud:9000",
-    "https://31.97.226.125:9000",
     "https://ezcheque.netlify.app",
-    "https://ezdist.netlify.app"
+    "https://ezdist.netlify.app",
+    "https://srv1012667.hstgr.cloud",
+    "https://31.97.226.125"
 ]
 
-# "https://uuuuuu.pythonanywhere.com",
+CSRF_TRUSTED_ORIGINS = [
+    "https://srv1012667.hstgr.cloud",
+    "https://31.97.226.125"
+]
 
 CORS_ALLOW_METHODS = [
     "GET",
@@ -119,14 +121,6 @@ CORS_ALLOW_HEADERS = [
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = ['Content-Type', 'X-CSRFToken']
 CORS_ALLOW_PRIVATE_NETWORK = True
-
-# if DEBUG:
-#     CORS_ALLOW_ALL_ORIGINS = True
-#     CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
-#     SESSION_COOKIE_SAMESITE = 'None'
-#     CSRF_COOKIE_SAMESITE = 'None'
-#     SESSION_COOKIE_SECURE = True
-#     CSRF_COOKIE_SECURE = True
 
 
 ROOT_URLCONF = 'src.urls'
@@ -278,17 +272,30 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Security Settings - Add these settings for production:
-# SECURE_SSL_REDIRECT = not DEBUG
-SECURE_SSL_REDIRECT = False
-SECURE_PROXY_SSL_HEADER = None
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = 'DENY'
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+
+if DEBUG:    
+    SECURE_SSL_REDIRECT = not DEBUG
+    SECURE_PROXY_SSL_HEADER = None
+    SESSION_COOKIE_SECURE = not DEBUG
+    CSRF_COOKIE_SECURE = not DEBUG
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS =  not DEBUG
+    SECURE_HSTS_PRELOAD =  not DEBUG
+# else:
+#     SECURE_SSL_REDIRECT = True
+#     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+#     SESSION_COOKIE_SECURE = True
+#     CSRF_COOKIE_SECURE = True
+#     SECURE_BROWSER_XSS_FILTER = True
+#     SECURE_CONTENT_TYPE_NOSNIFF = True
+#     X_FRAME_OPTIONS = 'DENY'
+#     SECURE_HSTS_SECONDS = 31536000
+#     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+#     SECURE_HSTS_PRELOAD = True
+
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
