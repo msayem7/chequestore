@@ -95,6 +95,42 @@ class PaymentInstrumentType(models.Model):
     def __str__(self):
         return str(self.type_name)
 
+# Sample Data
+# {
+# "payment_instrument_type": [
+# 	{
+# 		"id" : 1,
+# 		"serial_no" : 1,
+# 		"type_name" : "Cheque",
+# 		"prefix" : "CQ",
+# 		"last_number" : 1,
+# 		"branch_id" : 1,
+# 		"is_cash_equivalent" : true,
+# 		"auto_number" : false
+# 	},
+# 	{
+# 		"id" : 2,
+# 		"serial_no" : 2,
+# 		"type_name" : "Cash",
+# 		"prefix" : "CH",
+# 		"last_number" : 47,
+# 		"branch_id" : 1,
+# 		"is_cash_equivalent" : true,
+# 		"auto_number" : true
+# 	},
+# 	{
+# 		"id" : 3,
+# 		"serial_no" : 3,
+# 		"type_name" : "Claim",
+# 		"prefix" : "CL",
+# 		"last_number" : 82,
+# 		"branch_id" : 1,
+# 		"is_cash_equivalent" : false,
+# 		"auto_number" : true
+# 	}
+# ]}
+
+
 class PaymentInstrument(models.Model):
     branch = models.ForeignKey(Branch, on_delete=models.PROTECT, blank=False, null=False)
     serial_no = models.IntegerField( unique=False, null=False)
