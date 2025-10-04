@@ -241,7 +241,10 @@ class PaymentSerializer(serializers.ModelSerializer):
         fields = ['alias_id', 'branch', 'customer', 'received_date', 'cash_equivalent_amount',
                   'claim_amount','total_amount','shortage_amount', 'payment_details', 'invoices', 'version']
         read_only_fields = ['alias_id', 'version']
-    
+        
+        extra_kwargs = {
+            'alias_id': {'read_only': True}  # Explicitly make it read-only
+        }
         
     def validate_customer(self, value):
         if not value.is_parent:

@@ -1,0 +1,3 @@
+Hardcoded Value: 
+  1. instrument_type.serial_no =3, it should be replaced with an enum. Value of serial_no meaning 1. Cheque 2. Cash 3. Claim
+  

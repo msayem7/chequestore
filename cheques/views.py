@@ -438,6 +438,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
         errors = {}
         for index, detail_data in enumerate(payment_details_data):
             payment_instrument = detail_data['payment_instrument']
+            
+            if 'alias_id' in detail_data and not detail_data['alias_id']:
+                del detail_data['alias_id']
 
             try:
                 instrument = PaymentInstrument.objects.get(id=payment_instrument)
@@ -461,6 +464,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
         # Create PaymentDetails and claim objects
         for detail_data in payment_details_data:
+            
             payment_details= PaymentDetails.objects.create(payment=payment, branch=payment.branch, **detail_data)
             if instrument.instrument_type.serial_no == 3:
                 Claim.objects.create(branch=payment.branch, payment_details = payment_details

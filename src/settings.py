@@ -84,6 +84,7 @@ MIDDLEWARE = [
 
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
     "https://ezcheque.netlify.app",
     "https://ezdist.netlify.app",
     "https://srv1012667.hstgr.cloud",
@@ -211,26 +212,26 @@ WSGI_APPLICATION = 'src.wsgi.application'
 # }
 
 # production Database settings for PostgreSQL
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DJANGO_DB_NAME', os.environ.get('POSTGRES_DB', 'chequestoredb')),
-        'USER': os.environ.get('DJANGO_DB_USER', os.environ.get('POSTGRES_USER', 'chequestoreuser')),
-        'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', os.environ.get('POSTGRES_PASSWORD', 'adam01')),
-        'HOST': os.environ.get('DJANGO_DB_HOST', os.environ.get('DB_HOST', 'localhost')),
-        'PORT': os.environ.get('DJANGO_DB_PORT', os.environ.get('DB_PORT', '5435')),
-    }
-}
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('DB_NAME', 'chequestore'),      # Database name: ezchq
-#         'USER': os.environ.get('DB_USER', 'chequestoreuser'),      # Database user : postgres
-#         'PASSWORD': os.environ.get('DB_PASSWORD', 'adam01'),  # Database password: chequestorepass
-#         'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
-#         'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
+#         'NAME': os.environ.get('DJANGO_DB_NAME', os.environ.get('POSTGRES_DB', 'chequestoredb')),
+#         'USER': os.environ.get('DJANGO_DB_USER', os.environ.get('POSTGRES_USER', 'chequestoreuser')),
+#         'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', os.environ.get('POSTGRES_PASSWORD', 'adam01')),
+#         'HOST': os.environ.get('DJANGO_DB_HOST', os.environ.get('DB_HOST', 'localhost')),
+#         'PORT': os.environ.get('DJANGO_DB_PORT', os.environ.get('DB_PORT', '5432')),
 #     }
 # }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME', 'chequestore'),      # Database name: ezchq
+        'USER': os.environ.get('DB_USER', 'chequestoreuser'),      # Database user : postgres
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'adam01'),  # Database password: chequestorepass
+        'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
+        'PORT': os.environ.get('DB_PORT', '5432'),              # Default PostgreSQL port
+    }
+}
 
 # # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 # DATABASES = {
