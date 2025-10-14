@@ -50,7 +50,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 #     'srv1012667.hstgr.cloud',  # Your VPS hostname
 #     # ... any other hosts you need
 # ]
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,31.97.226.125,srv1012667.hstgr.cloud').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,31.97.226.125,srv1012667.hstgr.cloud, https://srv1061419.hstgr.cloud,72.60.206.97').split(',')
 # Application definition
 
 INSTALLED_APPS = [
@@ -88,12 +88,16 @@ CORS_ALLOWED_ORIGINS = [
     "https://ezcheque.netlify.app",
     "https://ezdist.netlify.app",
     "https://srv1012667.hstgr.cloud",
-    "https://31.97.226.125"
+    "https://31.97.226.125",    
+    "https://srv1061419.hstgr.cloud",
+    "https://72.60.206.97"
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://srv1012667.hstgr.cloud",
-    "https://31.97.226.125"
+    "https://31.97.226.125",    
+    "https://srv1061419.hstgr.cloud",
+    "https://72.60.206.97"
 ]
 
 CORS_ALLOW_METHODS = [
@@ -227,7 +231,7 @@ DATABASES = {
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('POSTGRES_DB', 'chqbd'),      # Database name: ezchq
+#         'NAME': os.environ.get('POSTGRES_DB', 'chqbd'),      # Database name: , chqbd
 #         'USER': os.environ.get('POSTGRES_USER', 'postgres'),      # Database user : postgres
 #         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'sa1234'),  # Database password: chequestorepass
 #         'HOST': os.environ.get('DB_HOST', 'localhost'),         # Database host (e.g., 'localhost' or IP)
