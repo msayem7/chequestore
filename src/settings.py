@@ -50,7 +50,8 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 #     'srv1012667.hstgr.cloud',  # Your VPS hostname
 #     # ... any other hosts you need
 # ]
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,31.97.226.125,srv1012667.hstgr.cloud, https://srv1061419.hstgr.cloud,72.60.206.97').split(',')
+#31.97.226.125,srv1012667.hstgr.cloud,
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1, srv1061419.hstgr.cloud,72.60.206.97').split(',')
 # Application definition
 
 INSTALLED_APPS = [
